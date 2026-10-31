@@ -28,6 +28,11 @@ object RuleEngine {
             ?.let { (offer.payoutCents * 60.0 / it).toInt() }
 
         val reasons = mutableListOf<String>()
+        // Never make a confident recommendation from an incomplete card.
+        val missingDistance = offer.distanceKm == null
+        val missingDuration = offer.durationMin == null
+        if (missingDistance) reasons.add("distance unreadable")
+        if (missingDuration) reasons.add("duration unreadable")
         var score = 0
         var checks = 0
 
@@ -47,6 +52,7 @@ object RuleEngine {
         }
 
         val verdict = when {
+            missingDistance || missingDuration -> Verdict.MEH
             checks == 0 -> Verdict.MEH
             score == checks -> Verdict.GOOD
             score >= checks / 2 -> Verdict.MEH
