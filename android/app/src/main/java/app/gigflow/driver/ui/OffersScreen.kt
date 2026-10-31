@@ -15,7 +15,7 @@ import app.gigflow.driver.ui.Ios.pressable
 import java.text.SimpleDateFormat
 import java.util.*
 
-/** Offers — the assistant's scored-offer feed with verdict filters. */
+/** Offers — Moonbeam's scored-offer feed with verdict filters. */
 class OffersScreen(ctx: Context, private val p: Palette, private val settings: app.gigflow.driver.SettingsRepository) {
 
     val screen = Screen(ctx, p, "Offers")
@@ -36,6 +36,7 @@ class OffersScreen(ctx: Context, private val p: Palette, private val settings: a
     fun refresh() {
         screen.column.removeAllViews()
         val c = screen.column
+        c.addView(MoonbeamBrand.header(ctx))
 
         val segWrap = FrameLayout(ctx).apply {
             setPadding(dp(ctx, 16f), dp(ctx, 4f), dp(ctx, 16f), 0)
