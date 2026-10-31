@@ -49,14 +49,11 @@ class GigFlowAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * Synthetic test offer — exercises the whole pipeline: score → overlay →
-     * countdown → gesture dispatch → voice. The accept node points at a
-     * screen-margin dead zone so the auto-accept tap provably fires without
-     * touching anything real; nothing is logged (see recordAction).
+     * Synthetic test offer: exercise scoring, overlay and voice without
+     * interacting with either driver app or logging a fake ride.
      */
     fun testOffer() {
         handler.post {
-            val dead = NodeRef(android.graphics.Rect(8, 1150, 14, 1190), "test")
             val o = DetectedOffer(
                 appPackage = "app.gigflow.test",
                 payoutCents = (12.50 * 100).toInt(),
@@ -64,8 +61,8 @@ class GigFlowAccessibilityService : AccessibilityService() {
                 distanceKm = 4.2,
                 durationMin = 18.0,
                 extraDistanceKm = null,
-            acceptNode = null,
-            declineNode = null,
+                acceptNode = null,
+                declineNode = null,
                 rawTexts = listOf("Test offer"),
                 currencySymbol = settings.currencySymbol,
                 expiresInSec = 12,
@@ -188,7 +185,9 @@ class GigFlowAccessibilityService : AccessibilityService() {
 
         // Mystro-style voice alert for the verdict, when enabled.
         if (settings.voiceAlerts) {
-            val label = when (scored.verdict) {
+            val label = if (offer.distanceKm == null || offer.durationMin == null) {
+                "Incomplete offer"
+            } else when (scored.verdict) {
                 Verdict.GOOD -> "Good offer"
                 Verdict.MEH -> "Borderline offer"
                 Verdict.BAD -> "Skip it"
