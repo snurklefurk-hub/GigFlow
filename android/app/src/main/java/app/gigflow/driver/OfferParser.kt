@@ -200,9 +200,14 @@ object OfferParser {
         }
         if (moneyNodes.isEmpty()) return null
 
-        val payout = moneyNodes
+        // A large unrelated number (bonus, balance, incentive) must NEVER
+        // silently replace the actual fare. Until a platform-specific offer
+        // card boundary is verified, ambiguous amounts are treated as unreadable.
+        val payoutCandidates = moneyNodes
             .filter { it.amount > 0.5 && !TIP_WORD.containsMatchIn(it.raw) }
-            .maxOfOrNull { it.amount } ?: return null
+            .map { it.amount }
+            .distinct()
+        val payout = payoutCandidates.singleOrNull() ?: return null
         val payoutMoney = moneyNodes.firstOrNull { it.amount == payout }
         val currency = payoutMoney?.currency ?: "$"
 
@@ -210,11 +215,13 @@ object OfferParser {
             .filter { TIP_WORD.containsMatchIn(it.raw) }
             .maxOfOrNull { it.amount }
 
-        // Distances: take the largest plausible one (total trip distance).
+        // Never treat the largest segment as the total trip distance.
+        // Separate pickup and ride segments cannot safely be combined without
+        // knowing the exact offer layout. Record an incomplete result instead.
         val distanceKm = texts.mapNotNull { t ->
             MILES.find(t)?.groupValues?.get(1)?.toDoubleOrNull()?.times(1.609344)
                 ?: KM.find(t)?.groupValues?.get(1)?.toDoubleOrNull()
-        }.filter { it in 0.2..500.0 }.maxOrNull()
+        }.filter { it in 0.2..500.0 }.distinct().singleOrNull()
 
         // Duration: ignore countdown timers (tiny ints, "seconds").
         val durationMin = texts.mapNotNull { t ->
@@ -224,7 +231,7 @@ object OfferParser {
                 val mnt = m.groupValues.getOrNull(2)?.toDoubleOrNull() ?: 0.0
                 h * 60 + mnt
             } ?: MINUTES.find(t)?.groupValues?.get(1)?.toDoubleOrNull()
-        }.filter { it in 1.0..600.0 }.maxOrNull()
+        }.filter { it in 1.0..600.0 }.distinct().singleOrNull()
 
         // Expiry countdown — "0:15" / "12s" style, Mystro shows it ticking.
         val expiresInSec = texts.mapNotNull { t ->
