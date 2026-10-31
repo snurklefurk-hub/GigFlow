@@ -51,7 +51,10 @@ class OverlayController(private val service: AccessibilityService) {
     fun show(scored: ScoredOffer, onAction: (Action) -> Unit) {
         hide()
         val o = scored.offer
-        val (bg, fgColor, label) = when (scored.verdict) {
+        val incomplete = o.distanceKm == null || o.durationMin == null
+        val (bg, fgColor, label) = if (incomplete) {
+            Triple(Color.parseColor("#596579"), Color.WHITE, "INCOMPLETE")
+        } else when (scored.verdict) {
             Verdict.GOOD -> Triple(Color.parseColor("#16915A"), Color.WHITE, "GOOD OFFER")
             Verdict.MEH -> Triple(Color.parseColor("#B07A0D"), Color.WHITE, "BORDERLINE")
             Verdict.BAD -> Triple(Color.parseColor("#D2432E"), Color.WHITE, "SKIP IT")
