@@ -1,6 +1,8 @@
 package app.gigflow.driver.ui
 
+import android.app.Activity
 import android.content.Context
+import android.net.Uri
 import android.content.Intent
 import android.graphics.Typeface
 import android.provider.Settings
@@ -24,6 +26,10 @@ class AssistScreen(
 ) {
     val screen = Screen(ctx, p, "Assistant")
     private val ctx: Context = ctx
+    private var availableUpdate: InAppUpdates.Release? = null
+    private var updateBusy = false
+    private var updateChecked = false
+    private var updateStatus = "Check GitHub for a signed app update."
 
     private fun gap(h: Float) = View(ctx).apply {
         layoutParams = LinearLayout.LayoutParams(1, dp(ctx, h))
@@ -52,6 +58,10 @@ class AssistScreen(
         c.addView(Sections.header(ctx, p, "About"))
         c.addView(aboutCard())
         screen.animateIn()
+        if (!updateChecked && ctx.packageName == "app.rideofferreader.driver") {
+            updateChecked = true
+            checkForUpdates()
+        }
     }
 
     private fun statusCard(): View {
@@ -379,6 +389,32 @@ class AssistScreen(
             chevron = true,
         ) { openUrl("https://github.com/w0wzahh/GigFlow/blob/master/docs/legal/terms-of-service.md") })
         card.addView(Sections.separator(ctx, p))
+        // Only permanent-key signed releases can update the installed signed
+        // app. Debug APKs use a different application ID and signing identity.
+        card.addView(Sections.row(ctx, p,
+            title = "Check for updates",
+            subtitle = if (ctx.packageName.endsWith(".debug"))
+                "Debug build: install the signed release once to enable in-app updates"
+            else updateStatus,
+            iconGlyph = "bolt",
+            iconTint = p.tint,
+            chevron = !updateBusy,
+        ) {
+            if (ctx.packageName.endsWith(".debug")) {
+                openUrl("https://github.com/snurklefurk-hub/GigFlow/releases")
+            } else checkForUpdates()
+        })
+        if (availableUpdate != null && ctx.packageName == "app.rideofferreader.driver") {
+            card.addView(Sections.separator(ctx, p))
+            card.addView(Sections.row(ctx, p,
+                title = "Download and install update",
+                subtitle = "v${availableUpdate!!.versionCode} · Android will ask for confirmation",
+                iconGlyph = "bolt",
+                iconTint = p.green,
+                chevron = !updateBusy,
+            ) { installAvailableUpdate() })
+        }
+        card.addView(Sections.separator(ctx, p))
         card.addView(Sections.row(ctx, p,
             title = "Version",
             value = try {
@@ -388,6 +424,61 @@ class AssistScreen(
         ))
         c_footer(card, "Everything stays on-device. Ride Offer Reader isn't affiliated with Uber or Lyft.")
         return card
+    }
+
+    /** Read-only GitHub release discovery, same update channel as NightRider. */
+    private fun checkForUpdates() {
+        val activity = ctx as? Activity ?: return
+        if (updateBusy) return
+        updateBusy = true
+        updateStatus = "Checking for signed updates..."
+        refresh()
+        Thread {
+            val result = try {
+                Result.success(InAppUpdates.findUpdate(ctx))
+            } catch (e: Exception) { Result.failure(e) }
+            activity.runOnUiThread {
+                if (activity.isFinishing || activity.isDestroyed) return@runOnUiThread
+                updateBusy = false
+                availableUpdate = result.getOrNull()
+                updateStatus = if (result.isFailure)
+                    "Update check failed: ${result.exceptionOrNull()?.message ?: "offline"}"
+                else if (availableUpdate == null) "No newer signed release available."
+                else "Signed update available."
+                refresh()
+            }
+        }.start()
+    }
+
+    private fun installAvailableUpdate() {
+        val activity = ctx as? Activity ?: return
+        val release = availableUpdate ?: return
+        if (updateBusy) return
+        if (!ctx.packageManager.canRequestPackageInstalls()) {
+            updateStatus = "Allow installation from Ride Offer Reader, then tap again."
+            refresh()
+            activity.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                Uri.parse("package:${ctx.packageName}")))
+            return
+        }
+        updateBusy = true
+        updateStatus = "Downloading and verifying signed APK..."
+        refresh()
+        Thread {
+            val error = try {
+                val apk = InAppUpdates.download(ctx, release)
+                InAppUpdates.install(ctx, apk, release)
+                null
+            } catch (e: Exception) { e }
+            activity.runOnUiThread {
+                if (activity.isFinishing || activity.isDestroyed) return@runOnUiThread
+                updateBusy = false
+                updateStatus = if (error == null)
+                    "Confirm the update in Android's installer."
+                else "Update failed: ${error.message ?: "Try again"}"
+                refresh()
+            }
+        }.start()
     }
 
     /** Units, overlay timing, haptics, log management. */
