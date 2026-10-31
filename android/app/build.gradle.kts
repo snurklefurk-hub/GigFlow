@@ -33,5 +33,6 @@ android {
 dependencies {
     // FileProvider for handing the downloaded update APK to the installer.
     implementation("androidx.core:core:1.13.1")
+    testImplementation("junit:junit:4.13.2")
 }
 
