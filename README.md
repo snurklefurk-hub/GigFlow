@@ -16,14 +16,18 @@ This project is a focused derivative of [GigFlow](https://github.com/w0wzahh/Gig
 
 - No automatic or manual accept/decline.
 - No screen taps, swipes, gesture dispatch, or control of Uber/Lyft.
-- No GPS mileage tracking, earnings capture, subscriptions, account login, update checker, or remote telemetry.
+- No GPS mileage tracking, earnings capture, subscriptions, account login, or remote telemetry.
 - No delivery, courier, or other gig-app integrations.
 
 If an offer cannot be read with confidence, the reader records a diagnostic rather than making up a result.
 
 ## Privacy
 
-Offer text and diagnostics stay on-device. The MVP declares no network, location, installer, or notification permissions.
+Offer text and diagnostics stay on-device. The MVP declares no location or notification permissions. Only the signed-release updater uses internet access and the user-approved Android package installer.
+
+## In-app updates
+
+The signed Ride Offer Reader release uses **Reader > About > Check for updates** to download and verify a newer signed release, then asks Android to install it without uninstalling the app. First-time release signing configuration is described in [SIGNED-UPDATES.md](SIGNED-UPDATES.md). CI-produced debug builds use different package IDs and temporary debug keys, and cannot join the signed update channel in place.
 
 ## Build
 
