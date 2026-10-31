@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- NightRider midnight sky; original Moonbeam artwork. -->
+    <path android:fillColor="#163149"
+        android:pathData="M18,66 C23,59 28,57 33,58 C38,49 50,50 54,60 C57,62 60,64 62,68 L62,76 L18,76 Z"/>
+    <path android:fillColor="#1D3B50"
+        android:pathData="M55,72 C59,64 66,61 71,64 C77,54 90,57 92,67 C97,70 97,75 94,78 L55,78 Z"/>
+    <!-- A narrow shaft, not a spotlight, cuts through the cloud bank. -->
+    <path android:fillColor="#508BEFD7"
+        android:pathData="M50,49 L53,49 L73,89 L66,89 Z"/>
+    <path android:fillColor="#B8F7F5DF"
+        android:pathData="M50,49 L51.8,49 L69,89 L67,89 Z"/>
+    <path android:strokeColor="#73B3B3B4" android:strokeWidth="0.9"
+        android:strokeLineCap="round" android:pathData="M20,67 L43,67"/>
+    <path android:strokeColor="#5B7BB8AB" android:strokeWidth="0.9"
+        android:strokeLineCap="round" android:pathData="M73,76 L93,76"/>
+    <!-- Crescent with the signature orange-to-green moon gradient. -->
+    <path android:pathData="M53,20 C43,19 36,23 33,30 C29,38 32,47 38,51 C45,57 54,57 60,52 C49,52 42,43 42,34 C42,27 46,22 53,20 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="33"
+                android:startY="22"
+                android:endX="62"
+                android:endY="56">
+                <item android:offset="0" android:color="#F5A55C"/>
+                <item android:offset="0.48" android:color="#F9C36F"/>
+                <item android:offset="1" android:color="#76D6AB"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path android:fillColor="#BFF8D798"
+        android:pathData="M53,20 C59,23 62,31 61,38 C62,29 58,23 53,20 Z"/>
+    <path android:fillColor="#B5D9F6EA"
+        android:pathData="M80,32 L81,36 L85,37 L81,38 L80,42 L79,38 L75,37 L79,36 Z"/>
+    <path android:fillColor="#C48CCBBF"
+        android:pathData="M72,22 L73,24 L75,25 L73,26 L72,28 L71,26 L69,25 L71,24 Z"/>
+</vector>

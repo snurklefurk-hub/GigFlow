@@ -1,6 +1,8 @@
-# Ride Offer Reader
+# Moonbeam by NightRider
 
-A minimal, local-first Android companion that reads and evaluates **Uber Driver** and **Lyft Driver** ride offers displayed on screen.
+**Cut through the noise. See what it's worth.**
+
+Moonbeam is a free, local-first Android companion from the NightRider ecosystem. It reads and evaluates **Uber Driver** and **Lyft Driver** ride offers displayed on screen, without ever deciding or acting for the driver.
 
 This project is a focused derivative of [GigFlow](https://github.com/w0wzahh/GigFlow). It retains the upstream MIT license and copyright notice in [LICENSE](LICENSE).
 
@@ -27,7 +29,13 @@ Offer text and diagnostics stay on-device. The MVP declares no location or notif
 
 ## In-app updates
 
-The signed Ride Offer Reader release uses **Reader > About > Check for updates** to download and verify a newer signed release, then asks Android to install it without uninstalling the app. First-time release signing configuration is described in [SIGNED-UPDATES.md](SIGNED-UPDATES.md). CI-produced debug builds use different package IDs and temporary debug keys, and cannot join the signed update channel in place.
+The signed Moonbeam release uses **Reader > About > Check for updates** to download and verify a newer signed release, then asks Android to install it without uninstalling the app. First-time release signing configuration is described in [SIGNED-UPDATES.md](SIGNED-UPDATES.md). CI-produced debug builds use different package IDs and temporary debug keys, and cannot join the signed update channel in place.
+
+## Brand and continuity
+
+Moonbeam's midnight-blue, orange-to-green crescent and cloud-cutting moonlight signal the NightRider mission: higher standards and independent, informed drivers. The **Android package ID remains `app.rideofferreader.driver`**, the signing key remains unchanged, and the update feed still uses `ror-v...` releases with the original `Ride-Offer-Reader.apk` asset name. This is deliberate: installed users update in place without losing preferences or diagnostics. The Moonbeam name is a pilot identity pending trademark clearance before wider external promotion.
+
+*Made to illuminate the bullshit.*
 
 ## Build
 

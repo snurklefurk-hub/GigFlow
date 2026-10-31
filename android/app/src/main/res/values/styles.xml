@@ -6,8 +6,8 @@
         <item name="android:windowLightNavigationBar">true</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
-        <item name="android:colorAccent">#007AFF</item>
+        <item name="android:colorAccent">#166B61</item>
     </style>
 
-    <!-- Dark variant is picked up automatically via values-night equivalent colors -->
+    <!-- Reader controls select light/dark system-bar contrast at runtime. -->
 </resources>

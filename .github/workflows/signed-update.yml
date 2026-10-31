@@ -1,4 +1,4 @@
-name: Publish signed Ride Offer Reader update
+name: Publish signed Moonbeam update
 
 on:
   workflow_dispatch:
@@ -99,8 +99,8 @@ jobs:
         run: |
           set -euo pipefail
           gh release create "ror-v$ROR_RELEASE_CODE" "out/Ride-Offer-Reader.apk#Ride-Offer-Reader.apk" \
-            --target "$GITHUB_SHA" --title "Ride Offer Reader $ROR_RELEASE_NAME" \
-            --notes "Ride Offer Reader signed in-app update.
+            --target "$GITHUB_SHA" --title "Moonbeam by NightRider $ROR_RELEASE_NAME" \
+            --notes "Moonbeam by NightRider signed in-app update.
           VersionCode: $ROR_RELEASE_CODE
           SHA256: $ROR_APK_SHA256"
           echo "### Published signed update $ROR_RELEASE_NAME" >> "$GITHUB_STEP_SUMMARY"

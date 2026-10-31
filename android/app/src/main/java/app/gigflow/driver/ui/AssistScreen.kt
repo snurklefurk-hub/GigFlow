@@ -24,7 +24,7 @@ class AssistScreen(
     private val settings: SettingsRepository,
     private val db: LocalDb,
 ) {
-    val screen = Screen(ctx, p, "Assistant")
+    val screen = Screen(ctx, p, "Reader")
     private val ctx: Context = ctx
     private var availableUpdate: InAppUpdates.Release? = null
     private var updateBusy = false
@@ -39,6 +39,7 @@ class AssistScreen(
         screen.column.removeAllViews()
         val c = screen.column
 
+        c.addView(MoonbeamBrand.header(ctx))
         c.addView(statusCard())
         c.addView(gap(10f))
         c.addView(setupCard())
@@ -80,7 +81,7 @@ class AssistScreen(
                 orientation = LinearLayout.VERTICAL
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 addView(TextView(ctx).apply {
-                    text = if (on) "Assistant is on" else "Assistant is off"
+                    text = if (on) "Moonbeam is watching" else "Moonbeam is off"
                     textSize = Ios.T_HEADLINE
                     setTypeface(typeface, Typeface.BOLD)
                     setTextColor(p.label)
@@ -320,7 +321,7 @@ class AssistScreen(
             if (svc != null) svc.testOffer()
             else Toast.makeText(ctx, "Enable the accessibility service first", Toast.LENGTH_SHORT).show()
         })
-        c_footer(card, "GigFlow only taps when the button is found clearly. It never touches other apps.")
+        c_footer(card, "Moonbeam reads offers and scores them. It never taps or controls driver apps.")
         return card
     }
 
@@ -370,6 +371,12 @@ class AssistScreen(
 
     private fun aboutCard(): View {
         val card = Sections.card(ctx, p)
+        card.addView(Sections.row(ctx, p,
+            title = "Moonbeam by NightRider",
+            subtitle = "Independent offer clarity. Free for drivers.",
+            iconGlyph = "bolt", iconTint = p.orange,
+        ))
+        card.addView(Sections.separator(ctx, p))
         card.addView(Sections.row(ctx, p,
             title = "Watched apps",
             value = "${ctx.resources.getStringArray(app.gigflow.driver.R.array.watched_packages).size} driver apps",
@@ -422,7 +429,7 @@ class AssistScreen(
             } catch (_: Exception) { "?" },
             iconGlyph = "doc", iconTint = p.gray,
         ))
-        c_footer(card, "Everything stays on-device. Ride Offer Reader isn't affiliated with Uber or Lyft.")
+        c_footer(card, "Made to illuminate the bullshit.\n\nYour offer data stays on this device. Moonbeam is independent of Uber and Lyft.")
         return card
     }
 
@@ -455,7 +462,7 @@ class AssistScreen(
         val release = availableUpdate ?: return
         if (updateBusy) return
         if (!ctx.packageManager.canRequestPackageInstalls()) {
-            updateStatus = "Allow installation from Ride Offer Reader, then tap again."
+            updateStatus = "Allow installation from Moonbeam, then tap again."
             refresh()
             activity.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
                 Uri.parse("package:${ctx.packageName}")))
