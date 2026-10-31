@@ -91,19 +91,31 @@ class GigFlowAccessibilityService : AccessibilityService() {
     fun stopWatching() = handler.post { offerGone() }
 
     /**
-     * Offer cards often live in a popup/dialog window that isn't the
-     * "active" window, and rootInActiveWindow is a known-null API. Fall
-     * back to scanning all interactive windows for the driver app.
+     * Uber may display its request in a separate floating window while another
+     * app is foreground. The active root can then be our own Offers screen,
+     * NOT the Uber request. Look at event.source AND all interactive windows.
+     * Do not rely on the first matching app window having the offer card.
      */
-    private fun appWindowRoot(pkg: String): android.view.accessibility.AccessibilityNodeInfo? {
-        rootInActiveWindow?.let { if (it.packageName?.toString() == pkg) return it }
+    private fun offerRoots(event: AccessibilityEvent, pkg: String):
+        List<android.view.accessibility.AccessibilityNodeInfo> {
+        val roots = ArrayList<android.view.accessibility.AccessibilityNodeInfo>(6)
+        fun include(node: android.view.accessibility.AccessibilityNodeInfo?) {
+            if (node != null && node.packageName?.toString() == pkg) roots.add(node)
+        }
         try {
-            for (w in windows) {
-                val r = w.root ?: continue
-                if (r.packageName?.toString() == pkg) return r
+            var root = event.source
+            var hops = 0
+            while (root != null && hops++ < 48) {
+                val parent = root.parent ?: break
+                root = parent
             }
+            include(root)
         } catch (_: Exception) { }
-        return null
+        try {
+            for (w in windows) include(w.root)
+        } catch (_: Exception) { }
+        try { include(rootInActiveWindow) } catch (_: Exception) { }
+        return roots
     }
 
     /** Hide the overlay only after the offer's been missing for a bit —
@@ -131,17 +143,26 @@ class GigFlowAccessibilityService : AccessibilityService() {
         val curSymbol = settings.currencySymbol
         val extraRe = OfferParser.extraMoney(settings.currencyCode, curSymbol)
 
-        val root = appWindowRoot(pkg) ?: run {
-            // Window exists but its content isn't retrievable (or the window
-            // list hasn't caught up yet) — record it so Diagnostics shows
-            // "we saw the app but couldn't read it" rather than nothing.
-            Diagnostics.record(this, pkg, "idle", listOf("(window not readable)"))
+        val roots = offerRoots(event, pkg)
+        if (roots.isEmpty()) {
+            Diagnostics.record(this, pkg, "idle",
+                listOf("(event received but Uber/Lyft window not readable)"))
             maybeOfferGone(now)
             return
         }
 
-        val nodes = OfferParser.flatten(root)
-        val offer = OfferParser.parse(pkg, nodes, extraRe, curSymbol)
+        // Prefer an actually readable offer over whichever window Android
+        // happened to call "active". Preserve the most informative snapshot
+        // when all candidate windows fail to parse.
+        val readings = roots.map { root ->
+            val items = OfferParser.flatten(root)
+            items to OfferParser.parse(pkg, items, extraRe, curSymbol)
+        }
+        val best = readings.firstOrNull {
+            it.second?.distanceKm != null && it.second?.durationMin != null
+        } ?: readings.firstOrNull { it.second != null }
+        val nodes = best?.first ?: readings.maxByOrNull { it.first.size }!!.first
+        val offer = best?.second
         if (offer == null) {
             // A screen with a money figure but no parse is a "miss" — the
             // card was probably there but the layout beat the heuristic.
