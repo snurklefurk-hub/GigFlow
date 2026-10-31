@@ -7,11 +7,11 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "app.gigflow.driver"
+        applicationId = "app.rideofferreader.driver"
         minSdk = 26
         targetSdk = 36
-        versionCode = 23
-        versionName = "1.6.2"
+        versionCode = 1
+        versionName = "0.1.0"
     }
 
     buildTypes {
@@ -33,5 +33,6 @@ android {
 dependencies {
     // FileProvider for handing the downloaded update APK to the installer.
     implementation("androidx.core:core:1.13.1")
+    testImplementation("junit:junit:4.13.2")
 }
 
