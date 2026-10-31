@@ -67,7 +67,21 @@ class AssistScreen(
 
     private fun statusCard(): View {
         val card = Sections.card(ctx, p)
-        val on = OverlayController.isServiceEnabled(ctx)
+        val configured = OverlayController.isServiceEnabled(ctx)
+        val connected = GigFlowAccessibilityService.instance != null
+        val on = configured && connected && settings.enabled
+        val state = when {
+            !configured -> "Accessibility permission is off"
+            !settings.enabled -> "Moonbeam monitoring is paused"
+            !connected -> "Moonbeam service disconnected"
+            else -> "Moonbeam is watching"
+        }
+        val detail = when {
+            !configured -> "Enable Moonbeam in Android Accessibility settings"
+            !settings.enabled -> "Turn Monitoring on below to scan driver offers"
+            !connected -> "Android has not connected the service; check Accessibility settings"
+            else -> "Listening in the background, including inside Uber and Lyft"
+        }
         card.addView(LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER_VERTICAL
@@ -81,25 +95,39 @@ class AssistScreen(
                 orientation = LinearLayout.VERTICAL
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 addView(TextView(ctx).apply {
-                    text = if (on) "Moonbeam is watching" else "Moonbeam is off"
+                    text = state
                     textSize = Ios.T_HEADLINE
                     setTypeface(typeface, Typeface.BOLD)
                     setTextColor(p.label)
                 })
                 addView(TextView(ctx).apply {
-                    text = if (on) "Scoring offers in your driver apps"
-                    else "Enable it to score Uber and Lyft offers"
+                    text = detail
                     textSize = Ios.T_FOOTNOTE
                     setTextColor(p.label2)
                 })
             })
         })
-        // Full-width button below the text — an inline button crowded the
-        // subtitle and clipped mid-word on narrower screens.
-        if (!on) {
+        // Local-only service heartbeat: distinguishes a crash/disconnect
+        // from a lack of offers. Never stores or displays ride content.
+        val health = ServiceHealth.snapshot(ctx)
+        val heartbeat = buildString {
+            if (health.lastEventAt > 0) append("Last driver-app signal: ${health.lastEventApp} · ${ago(health.lastEventAt)}")
+            else append("No Uber/Lyft screen event recorded yet")
+            if (health.lastErrorAt > 0) {
+                append("\nLast scan error: ${health.lastErrorType} · ${ago(health.lastErrorAt)}")
+            }
+            if (!connected && health.disconnectedAt > health.connectedAt &&
+                health.disconnectedAt > 0) {
+                append("\nLast disconnect: ${ago(health.disconnectedAt)}")
+            }
+        }
+        c_footer(card, heartbeat)
+
+        // Open the system control only when permission/connection is missing.
+        if (!configured || (configured && !connected)) {
             card.addView(LinearLayout(ctx).apply {
                 setPadding(dp(ctx, 16f), 0, dp(ctx, 16f), dp(ctx, 14f))
-                val btn = iosButton(ctx, p, "Enable now — takes 10 seconds")
+                val btn = iosButton(ctx, p, if (configured) "Review accessibility service" else "Enable now — takes 10 seconds")
                 addView(btn, LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
                 btn.setOnClickListener {

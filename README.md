@@ -27,6 +27,30 @@ If an offer cannot be read with confidence, the reader records a diagnostic rath
 
 Offer text and diagnostics stay on-device. The MVP declares no location or notification permissions. Only the signed-release updater uses internet access and the user-approved Android package installer.
 
+## Keeping Moonbeam active in Uber and Lyft
+
+Moonbeam's **Android Accessibility service** is system-managed and independent
+of its own app screen. You should be able to switch to Uber or Lyft without
+opening Moonbeam first or leaving it in the foreground.
+
+For an app-switch problem, open **Moonbeam > Reader** after the switch and read
+the service status and **Last driver-app signal**. An enabled accessibility
+permission is not proof the service process is currently connected; the Reader
+now distinguishes these states and reports the time/type of the most recent
+local scanner error. No offer text or crash messages are uploaded.
+
+On devices that restrict background processes, check Android **Settings >
+Apps > Moonbeam > Battery / App battery usage** and allow unrestricted
+background activity if the device offers that choice. Also verify the Moonbeam
+service remains enabled under **Settings > Accessibility**. Actual settings
+names vary by device. A service disabled by the operating system cannot be
+silently re-enabled by Moonbeam.
+
+**Field verification:** enable Monitoring and the Moonbeam accessibility
+service, open Uber then Lyft, return to Reader, and confirm it reports recent
+driver-app signals. Repeat after several minutes away from Moonbeam. If it
+reports a disconnection or scan error, use that status when filing a bug report.
+
 ## In-app updates
 
 The signed Moonbeam release uses **Reader > About > Check for updates** to download and verify a newer signed release, then asks Android to install it without uninstalling the app. First-time release signing configuration is described in [SIGNED-UPDATES.md](SIGNED-UPDATES.md). CI-produced debug builds use different package IDs and temporary debug keys, and cannot join the signed update channel in place.

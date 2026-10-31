@@ -8,8 +8,8 @@ import android.view.accessibility.AccessibilityEvent
 
 /**
  * Watches the configured driver apps' windows, extracts offer cards, scores
- * them against the user's rules, shows the floating verdict, and optionally
- * taps accept/decline when automation toggles are on.
+ * them against the user's rules and shows a read-only floating verdict.
+ * No interactions with driver apps are performed.
  *
  * Everything runs on-device — no screen content or offer data leaves the phone.
  */
@@ -27,7 +27,6 @@ class GigFlowAccessibilityService : AccessibilityService() {
     private var hideRunnable: Runnable? = null
     private var hideToken = ""
     private var tts: TextToSpeech? = null
-    private var localDb: LocalDb? = null
 
     companion object {
         /** Frames can flicker mid-animation; give an offer this long to
@@ -43,9 +42,13 @@ class GigFlowAccessibilityService : AccessibilityService() {
         super.onServiceConnected()
         settings = SettingsRepository(this)
         overlay = OverlayController(this)
-        localDb = LocalDb(this)
-        tts = TextToSpeech(this) { /* ready */ }
+        // Voice is optional; no TTS installation should be required to scan.
+        tts = if (settings.voiceAlerts) {
+            try { TextToSpeech(this) { /* ready */ } }
+            catch (e: Exception) { ServiceHealth.error(this, e); null }
+        } else null
         instance = this
+        ServiceHealth.connected(this)
     }
 
     /**
@@ -128,8 +131,21 @@ class GigFlowAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
-        android.util.Log.d("GigFlowSvc", "event pkg=${event.packageName} type=${event.eventType}")
-        val pkg = event.packageName?.toString() ?: return
+        // This callback runs independently of the Moonbeam Activity.
+        // A stale Uber/Lyft window must never bring the listener down.
+        if (!::settings.isInitialized || !::overlay.isInitialized) return
+        try {
+            val pkg = event.packageName?.toString() ?: return
+            ServiceHealth.event(this, pkg)
+            processOfferEvent(event, pkg)
+        } catch (e: Exception) {
+            android.util.Log.e("MoonbeamSvc", "Offer scan failed; listening continues", e)
+            try { ServiceHealth.error(this, e) } catch (_: Exception) { }
+            try { offerGone() } catch (_: Exception) { }
+        }
+    }
+
+    private fun processOfferEvent(event: AccessibilityEvent, pkg: String) {
         val now = System.currentTimeMillis()
 
         val prefs = settings.rulesFor(pkg) // per-app overrides over globals
@@ -154,9 +170,19 @@ class GigFlowAccessibilityService : AccessibilityService() {
         // Prefer an actually readable offer over whichever window Android
         // happened to call "active". Preserve the most informative snapshot
         // when all candidate windows fail to parse.
-        val readings = roots.map { root ->
-            val items = OfferParser.flatten(root)
-            items to OfferParser.parse(pkg, items, extraRe, curSymbol)
+        val readings = roots.mapNotNull { root ->
+            // Accessibility roots are ephemeral during app/window switches.
+            try {
+                val items = OfferParser.flatten(root)
+                items to OfferParser.parse(pkg, items, extraRe, curSymbol)
+            } catch (e: Exception) {
+                android.util.Log.w("MoonbeamSvc", "Window changed during scan", e)
+                null
+            }
+        }
+        if (readings.isEmpty()) {
+            maybeOfferGone(now)
+            return
         }
         val best = readings.firstOrNull {
             it.second?.distanceKm != null && it.second?.durationMin != null
@@ -206,6 +232,10 @@ class GigFlowAccessibilityService : AccessibilityService() {
 
         // Mystro-style voice alert for the verdict, when enabled.
         if (settings.voiceAlerts) {
+            if (tts == null) {
+                try { tts = TextToSpeech(this) { /* ready */ } }
+                catch (e: Exception) { ServiceHealth.error(this, e) }
+            }
             val label = if (offer.distanceKm == null || offer.durationMin == null) {
                 "Incomplete offer"
             } else when (scored.verdict) {
@@ -262,13 +292,26 @@ class GigFlowAccessibilityService : AccessibilityService() {
     }
 
     override fun onInterrupt() {
-        offerGone()
+        // Feedback interruption is not service shutdown: keep listening.
+        if (::overlay.isInitialized) {
+            try { offerGone() } catch (e: Exception) { ServiceHealth.error(this, e) }
+        }
+    }
+
+    override fun onUnbind(intent: android.content.Intent?): Boolean {
+        instance = null
+        ServiceHealth.disconnected(this)
+        return super.onUnbind(intent)
     }
 
     override fun onDestroy() {
         instance = null
-        overlay.hide()
-        tts?.shutdown()
+        ServiceHealth.disconnected(this)
+        hideRunnable?.let { handler.removeCallbacks(it) }
+        if (::overlay.isInitialized) {
+            try { overlay.hide() } catch (_: Exception) { }
+        }
+        try { tts?.shutdown() } catch (_: Exception) { }
         tts = null
         super.onDestroy()
     }
