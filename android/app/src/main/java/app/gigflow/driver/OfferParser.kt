@@ -189,14 +189,21 @@ object OfferParser {
         nodes: List<FlatNode>,
         extra: Regex? = null,
         extraSymbol: String = "$",
+    ): DetectedOffer? = parseTexts(pkg, nodes.map { it.text }, extra, extraSymbol)
+
+    /** Pure text entrypoint for replaying real Uber and Lyft offer samples in tests. */
+    fun parseTexts(
+        pkg: String,
+        texts: List<String>,
+        extra: Regex? = null,
+        extraSymbol: String = "$",
     ): DetectedOffer? {
-        val texts = nodes.map { it.text }
 
         // Collect money figures with their context. The card total is usually
         // the largest standalone amount; "incl. tip" lines become tips.
-        data class Money(val node: FlatNode, val amount: Double, val currency: String, val raw: String)
-        val moneyNodes = nodes.mapNotNull { n ->
-            moneyOf(n.text, extra, extraSymbol)?.let { (amount, cur) -> Money(n, amount, cur, n.text) }
+        data class Money(val amount: Double, val currency: String, val raw: String)
+        val moneyNodes = texts.mapNotNull { value ->
+            moneyOf(value, extra, extraSymbol)?.let { (amount, cur) -> Money(amount, cur, value) }
         }
         if (moneyNodes.isEmpty()) return null
 
@@ -215,23 +222,42 @@ object OfferParser {
             .filter { TIP_WORD.containsMatchIn(it.raw) }
             .maxOfOrNull { it.amount }
 
-        // Never treat the largest segment as the total trip distance.
-        // Separate pickup and ride segments cannot safely be combined without
-        // knowing the exact offer layout. Record an incomplete result instead.
-        val distanceKm = texts.mapNotNull { t ->
-            MILES.find(t)?.groupValues?.get(1)?.toDoubleOrNull()?.times(1.609344)
-                ?: KM.find(t)?.groupValues?.get(1)?.toDoubleOrNull()
-        }.filter { it in 0.2..500.0 }.distinct().singleOrNull()
+        // Incoming rideshare requests can show two separate legs:
+        // first the unpaid drive to pickup, then the paying passenger ride.
+        // A total must include BOTH. When there are >2 segments, do not guess.
+        val distanceSegments = texts.flatMap { t ->
+            MILES.findAll(t).mapNotNull { m ->
+                m.groupValues[1].toDoubleOrNull()?.times(1.609344)
+            }.toList() + KM.findAll(t).mapNotNull { m ->
+                m.groupValues[1].toDoubleOrNull()
+            }.toList()
+        }.filter { it in 0.2..500.0 }.distinct()
 
-        // Duration: ignore countdown timers (tiny ints, "seconds").
-        val durationMin = texts.mapNotNull { t ->
-            if (TIMER_HINTS.containsMatchIn(t)) return@mapNotNull null
-            HOURS_MIN.find(t)?.let { m ->
-                val h = m.groupValues[1].toDouble()
-                val mnt = m.groupValues.getOrNull(2)?.toDoubleOrNull() ?: 0.0
-                h * 60 + mnt
-            } ?: MINUTES.find(t)?.groupValues?.get(1)?.toDoubleOrNull()
-        }.filter { it in 1.0..600.0 }.distinct().singleOrNull()
+        val durationSegments = texts.flatMap { t ->
+            if (TIMER_HINTS.containsMatchIn(t)) return@flatMap emptyList<Double>()
+            val hours = HOURS_MIN.findAll(t).map { m ->
+                m.groupValues[1].toDouble() * 60 +
+                    (m.groupValues.getOrNull(2)?.toDoubleOrNull() ?: 0.0)
+            }.toList()
+            if (hours.isNotEmpty()) hours
+            else MINUTES.findAll(t).mapNotNull { m ->
+                m.groupValues[1].toDoubleOrNull()
+            }.toList()
+        }.filter { it in 1.0..600.0 }.distinct()
+
+        val twoLegOffer = pkg in setOf("com.uber.driver", "com.lyft.driver") &&
+            distanceSegments.size == 2 && durationSegments.size == 2
+
+        val distanceKm = when {
+            twoLegOffer -> distanceSegments.sum()
+            distanceSegments.size == 1 -> distanceSegments.single()
+            else -> null
+        }
+        val durationMin = when {
+            twoLegOffer -> durationSegments.sum()
+            durationSegments.size == 1 -> durationSegments.single()
+            else -> null
+        }
 
         // Expiry countdown — "0:15" / "12s" style, Mystro shows it ticking.
         val expiresInSec = texts.mapNotNull { t ->
