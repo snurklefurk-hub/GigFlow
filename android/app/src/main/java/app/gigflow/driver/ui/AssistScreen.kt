@@ -15,7 +15,7 @@ import app.gigflow.driver.ui.Ios.dp
 import app.gigflow.driver.ui.Ios.haptic
 import app.gigflow.driver.ui.Ios.pressable
 
-/** Assist — assistant status, rules, automation switches, diagnostics. */
+/** Reader setup, thresholds, and diagnostics for read-only offer evaluation. */
 class AssistScreen(
     ctx: Context,
     private val p: Palette,
@@ -36,17 +36,10 @@ class AssistScreen(
         c.addView(statusCard())
         c.addView(gap(10f))
         c.addView(setupCard())
-        c.addView(Sections.header(ctx, p, "Automation"))
-        c.addView(automationCard())
+        c.addView(Sections.header(ctx, p, "Reader"))
+        c.addView(readerCard())
         c.addView(Sections.header(ctx, p, "Offer rules"))
         c.addView(rulesCard())
-        c.addView(Sections.header(ctx, p, "Per-app rules"))
-        c.addView(perAppCard())
-        c.addView(TextView(ctx).apply {
-            text = "Apps without an override use the global rules above."
-            textSize = Ios.T_FOOTNOTE; setTextColor(p.label3)
-            setPadding(dp(ctx, 20f), dp(ctx, 6f), dp(ctx, 16f), 0)
-        })
         c.addView(Sections.header(ctx, p, "Preferences"))
         c.addView(preferencesCard())
         c.addView(Sections.header(ctx, p, "Diagnostics"))
@@ -58,8 +51,6 @@ class AssistScreen(
         })
         c.addView(Sections.header(ctx, p, "About"))
         c.addView(aboutCard())
-        c.addView(Sections.header(ctx, p, "Credits"))
-        c.addView(creditsCard())
         screen.animateIn()
     }
 
@@ -86,7 +77,7 @@ class AssistScreen(
                 })
                 addView(TextView(ctx).apply {
                     text = if (on) "Scoring offers in your driver apps"
-                    else "Enable it to score and auto-act on offers"
+                    else "Enable it to score Uber and Lyft offers"
                     textSize = Ios.T_FOOTNOTE
                     setTextColor(p.label2)
                 })
@@ -112,11 +103,7 @@ class AssistScreen(
      *  until the accessibility service is on, so surface that loudly. */
     private fun setupCard(): View {
         val serviceOn = OverlayController.isServiceEnabled(ctx)
-        val locOn = MileageTracker.hasLocationPermission(ctx)
-        val notifOn = android.os.Build.VERSION.SDK_INT < 33 ||
-            ctx.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) ==
-                android.content.pm.PackageManager.PERMISSION_GRANTED
-        if (serviceOn && locOn && notifOn) return View(ctx) // all good — hide
+        if (serviceOn) return View(ctx)
 
         val card = Sections.card(ctx, p)
         var first = true
@@ -136,22 +123,36 @@ class AssistScreen(
             "slider", serviceOn) {
             ctx.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }
-        step("Allow location access",
-            "Needed for automatic shift mileage",
-            "mappin", locOn) {
-            (ctx as? android.app.Activity)?.requestPermissions(
-                arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION,
-                    android.Manifest.permission.ACCESS_COARSE_LOCATION),
-                MainActivity.REQ_LOCATION,
-            )
+        c_footer(card, "This reader only observes Uber and Lyft offer text; it never taps either app.")
+        return card
+    }
+
+    private fun readerCard(): View {
+        val card = Sections.card(ctx, p)
+        val (monitoring, _) = Sections.switchRow(ctx, p, "Monitoring",
+            "Score Uber and Lyft offers as they appear", settings.enabled) {
+            settings.enabled = it
+            if (!it) GigFlowAccessibilityService.instance?.stopWatching()
         }
-        step("Allow notifications",
-            "Shows the shift-tracking notification while a shift runs",
-            "bell", notifOn) {
-            (ctx as? android.app.Activity)?.requestPermissions(
-                arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 9)
+        val (voice, _) = Sections.switchRow(ctx, p, "Voice alerts",
+            "Speak the rating when an offer is scored", settings.voiceAlerts) {
+            settings.voiceAlerts = it
         }
-        c_footer(card, "Finish these three, then turn on the automation switches below.")
+        card.addView(monitoring)
+        card.addView(Sections.separator(ctx, p))
+        card.addView(voice)
+        card.addView(Sections.separator(ctx, p))
+        card.addView(Sections.row(ctx, p,
+            title = "Preview the overlay",
+            subtitle = "Shows a sample verdict; it never interacts with a driver app",
+            iconGlyph = "bolt", iconTint = p.tint,
+            chevron = OverlayController.isServiceEnabled(ctx),
+        ) {
+            val svc = GigFlowAccessibilityService.instance
+            if (svc != null) svc.testOffer()
+            else Toast.makeText(ctx, "Enable the accessibility service first", Toast.LENGTH_SHORT).show()
+        })
+        c_footer(card, "Read-only by design: no accept, decline, tap, swipe, or app control.")
         return card
     }
 
@@ -379,27 +380,13 @@ class AssistScreen(
         ) { openUrl("https://github.com/w0wzahh/GigFlow/blob/master/docs/legal/terms-of-service.md") })
         card.addView(Sections.separator(ctx, p))
         card.addView(Sections.row(ctx, p,
-            title = "Check for updates",
-            subtitle = "Looks at GitHub Releases for a newer APK",
-            iconGlyph = "globe", iconTint = p.tint,
-            chevron = true,
-        ) {
-            UpdateChecker.check(ctx) { rel ->
-                if (rel != null) UpdateChecker.showUpdateSheet(ctx, p, rel)
-                else Toast.makeText(ctx,
-                    "You're up to date (v${UpdateChecker.currentVersion(ctx)})",
-                    Toast.LENGTH_SHORT).show()
-            }
-        })
-        card.addView(Sections.separator(ctx, p))
-        card.addView(Sections.row(ctx, p,
             title = "Version",
             value = try {
                 ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName
             } catch (_: Exception) { "?" },
             iconGlyph = "doc", iconTint = p.gray,
         ))
-        c_footer(card, "Everything stays on-device. GigFlow isn't affiliated with any gig platform.")
+        c_footer(card, "Everything stays on-device. Ride Offer Reader isn't affiliated with Uber or Lyft.")
         return card
     }
 
@@ -460,12 +447,6 @@ class AssistScreen(
     private val watchedApps = listOf(
         "Uber Driver" to "com.uber.driver",
         "Lyft Driver" to "com.lyft.driver",
-        "Dasher" to "com.doordash.driverapp",
-        "Instacart Shopper" to "com.instacart.shopper",
-        "Amazon Flex" to "com.amazon.rabbit",
-        "Spark Driver" to "com.walmart.sparkdriver",
-        "Wolt Courier Partner" to "com.wolt.courierapp",
-        "foodora rider" to "com.logistics.rider.foodora",
     )
 
     /** Mystro-style per-service filters — one row per watched app. */

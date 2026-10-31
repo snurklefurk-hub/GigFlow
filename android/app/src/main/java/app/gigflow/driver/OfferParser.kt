@@ -238,36 +238,6 @@ object OfferParser {
         // Need at least payout + one of distance/duration to call it an offer.
         if (distanceKm == null && durationMin == null) return null
 
-        fun nodeMatching(re: Regex, clickableOnly: Boolean): NodeRef? =
-            nodes.firstOrNull { n ->
-                re.containsMatchIn(n.text) && (!clickableOnly || n.clickable) && n.bounds.width() > 0
-            }?.let { NodeRef(it.bounds, it.text) }
-
-        // Uber/Lyft accept the request when *anywhere* on the card is tapped —
-        // there is no labelled Accept control, so the affordance is the card
-        // itself: the smallest clickable node containing the payout text.
-        fun tapAnywhereAccept(payoutNode: FlatNode?): NodeRef? {
-            if (pkg !in TAP_ANYWHERE_PKGS) return null
-            val m = payoutNode ?: return null
-            val cx = m.bounds.centerX(); val cy = m.bounds.centerY()
-            return nodes
-                .filter { it.clickable && it.bounds.contains(cx, cy) }
-                .minByOrNull { it.bounds.width() * it.bounds.height() }
-                ?.let { NodeRef(it.bounds, it.text) }
-        }
-
-        val isReservation = texts.any { RESERVATION.containsMatchIn(it) }
-
-        val accept = nodeMatching(ACCEPT_WORDS, clickableOnly = true)
-            ?: nodeMatching(ACCEPT_WORDS, clickableOnly = false)
-            ?: if (isReservation && pkg == "com.amazon.rabbit") {
-                nodeMatching(RESERVE_ACCEPT, clickableOnly = true)
-                    ?: nodeMatching(RESERVE_ACCEPT, clickableOnly = false)
-            } else null
-            ?: tapAnywhereAccept(payoutMoney?.node)
-        val decline = nodeMatching(DECLINE_WORDS, clickableOnly = true)
-            ?: nodeMatching(DECLINE_WORDS, clickableOnly = false)
-
         return DetectedOffer(
             appPackage = pkg,
             payoutCents = (payout * 100).toInt(),
@@ -275,12 +245,12 @@ object OfferParser {
             distanceKm = distanceKm?.let { Math.round(it * 10) / 10.0 },
             durationMin = durationMin,
             extraDistanceKm = null,
-            acceptNode = accept,
-            declineNode = decline,
+            acceptNode = null,
+            declineNode = null,
             rawTexts = texts,
             currencySymbol = currency,
             expiresInSec = expiresInSec,
-            isReservation = isReservation,
+            isReservation = false,
         )
     }
 }
