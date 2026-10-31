@@ -82,6 +82,11 @@ jobs:
           SIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)
           test -n "$SIGNER"
           "$SIGNER" verify --print-certs "$APK"
+          BADGING=$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK")
+          printf '%s\n' "$BADGING" | grep -Fq "package: name='app.rideofferreader.driver' versionCode='$ROR_RELEASE_CODE'" || {
+            echo "::error::Signed APK has unexpected package name or version code"
+            exit 1
+          }
           mkdir -p out
           cp "$APK" out/Ride-Offer-Reader.apk
           echo "ROR_APK_SHA256=$(sha256sum out/Ride-Offer-Reader.apk | cut -d ' ' -f1)" >> "$GITHUB_ENV"
