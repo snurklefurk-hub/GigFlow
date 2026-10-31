@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Ride Offer Reader</string>
-    <string name="service_label">Ride Offer Reader</string>
-    <string name="service_description">Reads Uber and Lyft offer cards shown on screen and evaluates them against your rules. It is read-only: it never taps, accepts, declines, or controls either app.</string>
-    <string name="service_summary">Read-only Uber and Lyft offer scoring</string>
+    <string name="app_name">Moonbeam</string>
+    <string name="service_label">Moonbeam offer reader</string>
+    <string name="service_description">Moonbeam by NightRider evaluates visible Uber and Lyft offers using your rules. Read-only: it never taps, accepts, declines, or controls those apps.</string>
+    <string name="service_summary">Moonbeam: clear, read-only offer scoring</string>
 
     <!-- Shown in the Assist UI. The accessibility service filters by the
          literal list in res/xml/accessibility_service_config.xml — keep the
