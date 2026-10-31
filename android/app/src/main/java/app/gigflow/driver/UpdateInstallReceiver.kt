@@ -23,16 +23,16 @@ class UpdateInstallReceiver : BroadcastReceiver() {
                 if (confirmation != null) {
                     confirmation.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     try { context.startActivity(confirmation) } catch (_: Exception) {
-                        Toast.makeText(context, "Open Ride Offer Reader and try the update again.", Toast.LENGTH_LONG).show()
+                        Toast.makeText(context, "Open Moonbeam and try the update again.", Toast.LENGTH_LONG).show()
                     }
                 }
             }
             PackageInstaller.STATUS_SUCCESS -> {
-                Toast.makeText(context, "Ride Offer Reader updated successfully.", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, "Moonbeam updated successfully.", Toast.LENGTH_LONG).show()
             }
             else -> {
                 val message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE) ?: "Installation declined or failed"
-                Toast.makeText(context, "Ride Offer Reader update: $message", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, "Moonbeam update: $message", Toast.LENGTH_LONG).show()
             }
         }
     }
