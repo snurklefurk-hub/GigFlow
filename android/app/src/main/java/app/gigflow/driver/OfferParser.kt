@@ -2,6 +2,7 @@ package app.gigflow.driver
 
 import android.graphics.Rect
 import android.view.accessibility.AccessibilityNodeInfo
+import kotlin.math.roundToInt
 
 /**
  * Heuristic offer-card extractor.
@@ -273,8 +274,8 @@ object OfferParser {
 
         return DetectedOffer(
             appPackage = pkg,
-            payoutCents = (payout * 100).toInt(),
-            tipCents = tip?.let { (it * 100).toInt() },
+            payoutCents = (payout * 100).roundToInt(),
+            tipCents = tip?.let { (it * 100).roundToInt() },
             distanceKm = distanceKm?.let { Math.round(it * 10) / 10.0 },
             durationMin = durationMin,
             extraDistanceKm = null,
