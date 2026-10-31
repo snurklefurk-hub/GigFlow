@@ -10,13 +10,28 @@ android {
         applicationId = "app.rideofferreader.driver"
         minSdk = 26
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.1.1"
+        versionCode = (project.findProperty("rorVersionCode") as? String)?.toIntOrNull() ?: 3
+        versionName = (project.findProperty("rorVersionName") as? String) ?: "0.2.0"
+    }
+
+    // Never commit signing keys. Stable signing identity comes from GitHub
+    // Actions secrets, just like NightRider's signed pilot update channel.
+    signingConfigs {
+        create("distribution") {
+            val signingFile = System.getenv("ROR_KEYSTORE_PATH")
+            if (!signingFile.isNullOrBlank()) {
+                storeFile = file(signingFile)
+                storePassword = System.getenv("ROR_STORE_PASSWORD")
+                keyAlias = System.getenv("ROR_KEY_ALIAS")
+                keyPassword = System.getenv("ROR_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = true
+            signingConfig = signingConfigs.getByName("distribution")
+            isMinifyEnabled = false
             proguardFiles("proguard-rules.pro")
         }
         debug {
