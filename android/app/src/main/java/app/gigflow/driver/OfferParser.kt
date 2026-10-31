@@ -200,9 +200,14 @@ object OfferParser {
         }
         if (moneyNodes.isEmpty()) return null
 
-        val payout = moneyNodes
+        // A large unrelated number (bonus, balance, incentive) must NEVER
+        // silently replace the actual fare. Until a platform-specific offer
+        // card boundary is verified, ambiguous amounts are treated as unreadable.
+        val payoutCandidates = moneyNodes
             .filter { it.amount > 0.5 && !TIP_WORD.containsMatchIn(it.raw) }
-            .maxOfOrNull { it.amount } ?: return null
+            .map { it.amount }
+            .distinct()
+        val payout = payoutCandidates.singleOrNull() ?: return null
         val payoutMoney = moneyNodes.firstOrNull { it.amount == payout }
         val currency = payoutMoney?.currency ?: "$"
 
@@ -210,11 +215,13 @@ object OfferParser {
             .filter { TIP_WORD.containsMatchIn(it.raw) }
             .maxOfOrNull { it.amount }
 
-        // Distances: take the largest plausible one (total trip distance).
+        // Never treat the largest segment as the total trip distance.
+        // Separate pickup and ride segments cannot safely be combined without
+        // knowing the exact offer layout. Record an incomplete result instead.
         val distanceKm = texts.mapNotNull { t ->
             MILES.find(t)?.groupValues?.get(1)?.toDoubleOrNull()?.times(1.609344)
                 ?: KM.find(t)?.groupValues?.get(1)?.toDoubleOrNull()
-        }.filter { it in 0.2..500.0 }.maxOrNull()
+        }.filter { it in 0.2..500.0 }.distinct().singleOrNull()
 
         // Duration: ignore countdown timers (tiny ints, "seconds").
         val durationMin = texts.mapNotNull { t ->
@@ -224,7 +231,7 @@ object OfferParser {
                 val mnt = m.groupValues.getOrNull(2)?.toDoubleOrNull() ?: 0.0
                 h * 60 + mnt
             } ?: MINUTES.find(t)?.groupValues?.get(1)?.toDoubleOrNull()
-        }.filter { it in 1.0..600.0 }.maxOrNull()
+        }.filter { it in 1.0..600.0 }.distinct().singleOrNull()
 
         // Expiry countdown — "0:15" / "12s" style, Mystro shows it ticking.
         val expiresInSec = texts.mapNotNull { t ->
@@ -238,36 +245,6 @@ object OfferParser {
         // Need at least payout + one of distance/duration to call it an offer.
         if (distanceKm == null && durationMin == null) return null
 
-        fun nodeMatching(re: Regex, clickableOnly: Boolean): NodeRef? =
-            nodes.firstOrNull { n ->
-                re.containsMatchIn(n.text) && (!clickableOnly || n.clickable) && n.bounds.width() > 0
-            }?.let { NodeRef(it.bounds, it.text) }
-
-        // Uber/Lyft accept the request when *anywhere* on the card is tapped —
-        // there is no labelled Accept control, so the affordance is the card
-        // itself: the smallest clickable node containing the payout text.
-        fun tapAnywhereAccept(payoutNode: FlatNode?): NodeRef? {
-            if (pkg !in TAP_ANYWHERE_PKGS) return null
-            val m = payoutNode ?: return null
-            val cx = m.bounds.centerX(); val cy = m.bounds.centerY()
-            return nodes
-                .filter { it.clickable && it.bounds.contains(cx, cy) }
-                .minByOrNull { it.bounds.width() * it.bounds.height() }
-                ?.let { NodeRef(it.bounds, it.text) }
-        }
-
-        val isReservation = texts.any { RESERVATION.containsMatchIn(it) }
-
-        val accept = nodeMatching(ACCEPT_WORDS, clickableOnly = true)
-            ?: nodeMatching(ACCEPT_WORDS, clickableOnly = false)
-            ?: if (isReservation && pkg == "com.amazon.rabbit") {
-                nodeMatching(RESERVE_ACCEPT, clickableOnly = true)
-                    ?: nodeMatching(RESERVE_ACCEPT, clickableOnly = false)
-            } else null
-            ?: tapAnywhereAccept(payoutMoney?.node)
-        val decline = nodeMatching(DECLINE_WORDS, clickableOnly = true)
-            ?: nodeMatching(DECLINE_WORDS, clickableOnly = false)
-
         return DetectedOffer(
             appPackage = pkg,
             payoutCents = (payout * 100).toInt(),
@@ -275,12 +252,12 @@ object OfferParser {
             distanceKm = distanceKm?.let { Math.round(it * 10) / 10.0 },
             durationMin = durationMin,
             extraDistanceKm = null,
-            acceptNode = accept,
-            declineNode = decline,
+            acceptNode = null,
+            declineNode = null,
             rawTexts = texts,
             currencySymbol = currency,
             expiresInSec = expiresInSec,
-            isReservation = isReservation,
+            isReservation = false,
         )
     }
 }
