@@ -75,14 +75,18 @@ class OffersScreen(ctx: Context, private val p: Palette, private val settings: a
     }
 
     private fun offerRow(e: OfferLog.Entry): View {
-        val verdictColor = when (e.verdict) {
+        val incomplete = e.distanceKm == null || e.durationMin == null
+        val verdictColor = if (incomplete) p.label3 else when (e.verdict) {
             "GOOD" -> p.green; "MEH" -> p.orange; else -> p.red
         }
-        val verdictLabel = when (e.verdict) {
+        val verdictLabel = if (incomplete) "Incomplete" else when (e.verdict) {
             "GOOD" -> "Good offer"; "MEH" -> "Borderline"; else -> "Skipped"
         }
-        val app = e.pkg.substringAfterLast('.')
-            .replace("driverapp", "Dasher").replaceFirstChar { it.uppercase() }
+        val app = when (e.pkg) {
+            "com.uber.driver" -> "Uber"
+            "com.lyft.driver" -> "Lyft"
+            else -> "Unknown"
+        }
         val stats = buildString {
             if (e.reservation) append("Reserved")
             e.distanceKm?.let { if (isNotEmpty()) append(" · "); append(distText(it)) }
@@ -204,7 +208,7 @@ class OffersScreen(ctx: Context, private val p: Palette, private val settings: a
             gravity = Gravity.CENTER
         })
         addView(TextView(ctx).apply {
-            text = "Go online in a driver app — when an offer card appears, GigFlow scores it and it shows up here."
+            text = "Go online in Uber or Lyft. Offers that can be read will appear here."
             textSize = Ios.T_SUBHEAD
             setTextColor(p.label2)
             gravity = Gravity.CENTER
