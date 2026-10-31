@@ -12,7 +12,7 @@ import android.widget.FrameLayout
 import app.gigflow.driver.ui.*
 
 /**
- * GigFlow Driver — iOS-styled companion.
+ * Moonbeam by NightRider — read-only offer companion.
  *
  * Two focused screens hosted in a single activity (no fragments, no deps):
  *   Offers · Reader
