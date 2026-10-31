@@ -21,7 +21,6 @@ class OverlayController(private val service: AccessibilityService) {
 
     private val wm = service.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private var view: LinearLayout? = null
-    private var countdown: TextView? = null
     private var expiry: TextView? = null
     private val tickerHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var expiryTicker: Runnable? = null
@@ -49,12 +48,7 @@ class OverlayController(private val service: AccessibilityService) {
     private fun money(cents: Int?, symbol: String = "$") =
         app.gigflow.driver.ui.Ios.money(cents, symbol)
 
-    /** Update the auto-accept countdown line, if shown. */
-    fun setCountdown(secondsLeft: Int) {
-        countdown?.text = "Auto-accepting in ${secondsLeft}s · tap to cancel"
-    }
-
-    fun show(scored: ScoredOffer, autoAcceptSec: Int = 0, onAction: (Action) -> Unit) {
+    fun show(scored: ScoredOffer, onAction: (Action) -> Unit) {
         hide()
         val o = scored.offer
         val (bg, fgColor, label) = when (scored.verdict) {
@@ -105,39 +99,8 @@ class OverlayController(private val service: AccessibilityService) {
         container.addView(title)
         container.addView(stats)
 
-        if (o.acceptNode != null || o.declineNode != null) {
-            val row = LinearLayout(service).apply {
-                orientation = LinearLayout.HORIZONTAL
-                setPadding(0, 10.dp(), 0, 0)
-            }
-            fun pill(text: String, color: Int, act: Action) = Button(service).apply {
-                this.text = text
-                textSize = 12f
-                setTextColor(Color.WHITE)
-                isAllCaps = false
-                background = GradientDrawable().apply {
-                    cornerRadius = 18.dp().toFloat()
-                    setColor(color)
-                }
-                setOnClickListener { onAction(act) }
-            }
-            o.declineNode?.let {
-                row.addView(pill("Decline", Color.parseColor("#4A5260"), Action.DECLINE))
-            }
-            o.acceptNode?.let {
-                row.addView(
-                    pill("Accept", Color.parseColor("#0B8A80"), Action.ACCEPT),
-                    LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.WRAP_CONTENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT,
-                    ).apply { marginStart = 8.dp() },
-                )
-            }
-            container.addView(row)
-        }
-
         // Offer's own expiry timer, if the card showed one ("0:15", "12s").
-        if (autoAcceptSec <= 0 && o.expiresInSec != null) {
+        if (o.expiresInSec != null) {
             expiry = TextView(service).apply {
                 text = "Expires in ${o.expiresInSec}s"
                 setTextColor(Color.parseColor("#8E8E93"))
@@ -148,19 +111,6 @@ class OverlayController(private val service: AccessibilityService) {
             tickExpiry(o.expiresInSec) { onAction(Action.EXPIRED) }
         }
 
-        // Mystro-style countdown strip: auto-accept fires when it hits 0,
-        // tapping it cancels and leaves the offer alone.
-        if (autoAcceptSec > 0) {
-            countdown = TextView(service).apply {
-                text = "Auto-accepting in ${autoAcceptSec}s · tap to cancel"
-                setTextColor(Color.parseColor("#8BC5FF"))
-                textSize = 12.5f
-                setTypeface(typeface, android.graphics.Typeface.BOLD)
-                setPadding(0, 8.dp(), 0, 0)
-                setOnClickListener { onAction(Action.CANCEL_AUTO) }
-            }
-            container.addView(countdown)
-        }
 
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -190,11 +140,10 @@ class OverlayController(private val service: AccessibilityService) {
             try { wm.removeView(it) } catch (_: Exception) {}
         }
         view = null
-        countdown = null
         expiry = null
     }
 
-    enum class Action { ACCEPT, DECLINE, CANCEL_AUTO, EXPIRED }
+    enum class Action { EXPIRED }
 
     companion object {
         /** Check the service is actually enabled — used by MainActivity. */

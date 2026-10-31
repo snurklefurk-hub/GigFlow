@@ -1,14 +1,10 @@
 package app.gigflow.driver
 
 import android.accessibilityservice.AccessibilityService
-import android.content.Context
-import android.content.pm.PackageManager
-import android.location.LocationManager
 import android.os.Handler
 import android.os.Looper
 import android.speech.tts.TextToSpeech
 import android.view.accessibility.AccessibilityEvent
-import org.json.JSONObject
 
 /**
  * Watches the configured driver apps' windows, extracts offer cards, scores
@@ -32,17 +28,8 @@ class GigFlowAccessibilityService : AccessibilityService() {
     private var hideToken = ""
     private var tts: TextToSpeech? = null
     private var localDb: LocalDb? = null
-    private var countdownTicker: Runnable? = null
-
-    // Auto-shift tracking state
-    private var lastDriverAppAt = 0L
-    private var idleStopCheck: Runnable? = null
-    private val loggedCompletions = mutableSetOf<String>()
 
     companion object {
-        /** Auto-stop shift tracking after this long with no driver-app events. */
-        private const val IDLE_STOP_MS = 30 * 60_000L
-
         /** Frames can flicker mid-animation; give an offer this long to
          *  reappear before hiding the overlay. */
         private const val MISS_GRACE_MS = 2_000L
@@ -77,22 +64,18 @@ class GigFlowAccessibilityService : AccessibilityService() {
                 distanceKm = 4.2,
                 durationMin = 18.0,
                 extraDistanceKm = null,
-                acceptNode = dead,
-                declineNode = dead,
+            acceptNode = null,
+            declineNode = null,
                 rawTexts = listOf("Test offer"),
                 currencySymbol = settings.currencySymbol,
                 expiresInSec = 12,
             )
             val scored = RuleEngine.score(o, settings.rules())
             activeOffer = scored // so stopWatching()/onInterrupt clear it too
-            val delay = if (settings.autoAccept && scored.verdict == Verdict.GOOD)
-                settings.autoAcceptDelaySec else 0
-            overlay.show(scored, delay) { action ->
-                cancelAutoAccept()
+            overlay.show(scored) { action ->
                 if (action == OverlayController.Action.EXPIRED) offerGone()
                 overlay.hide()
             }
-            if (delay > 0) scheduleAutoAccept(scored, dead, delay)
             if (settings.voiceAlerts) {
                 tts?.speak(
                     "Test offer, ${spokenAmount(o.payoutCents, o.currencySymbol)}",
@@ -135,26 +118,10 @@ class GigFlowAccessibilityService : AccessibilityService() {
         offerGone()
     }
 
-    /** Last-known fix — good enough for tagging where an offer appeared. */
-    private fun lastLocation(): Pair<Double, Double>? {
-        if (!MileageTracker.hasLocationPermission(this)) return null
-        val lm = getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        return try {
-            (lm.getLastKnownLocation(LocationManager.GPS_PROVIDER)
-                ?: lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER))
-                ?.let { it.latitude to it.longitude }
-        } catch (_: SecurityException) { null }
-    }
-
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
         android.util.Log.d("GigFlowSvc", "event pkg=${event.packageName} type=${event.eventType}")
         val pkg = event.packageName?.toString() ?: return
         val now = System.currentTimeMillis()
-
-        // Events only arrive from watched driver apps (manifest filters), so
-        // any event means the driver is inside a work app — feed the
-        // auto-shift tracker before anything else.
-        onDriverAppSeen(now)
 
         val prefs = settings.rulesFor(pkg) // per-app overrides over globals
         // Monitoring switched off while an overlay was up — tear it down.
@@ -187,7 +154,6 @@ class GigFlowAccessibilityService : AccessibilityService() {
             }
             Diagnostics.record(this, pkg, if (hasMoney) "miss" else "idle",
                 nodes.map { it.diag() })
-            maybeLogCompletion(pkg, nodes, now, extraRe, curSymbol)
             maybeOfferGone(now)
             return
         }
@@ -204,8 +170,6 @@ class GigFlowAccessibilityService : AccessibilityService() {
         val scored = RuleEngine.score(offer, prefs)
         activeOffer = scored
 
-        val loc = lastLocation()
-
         OfferLog.add(this, OfferLog.Entry(
             at = offer.seenAt,
             pkg = pkg,
@@ -216,8 +180,8 @@ class GigFlowAccessibilityService : AccessibilityService() {
             perHourCents = scored.perHourCents,
             verdict = scored.verdict.name,
             action = "shown",
-            lat = loc?.first,
-            lng = loc?.second,
+            lat = null,
+            lng = null,
             reservation = offer.isReservation,
             currency = offer.currencySymbol,
         ))
@@ -235,27 +199,8 @@ class GigFlowAccessibilityService : AccessibilityService() {
             )
         }
 
-        val autoAcceptDelay =
-            if (prefs.autoAccept && scored.verdict == Verdict.GOOD && offer.acceptNode != null &&
-                (settings.autoAcceptReservations || !offer.isReservation))
-                settings.autoAcceptDelaySec else 0
-
-        overlay.show(scored, autoAcceptDelay) { action ->
-            cancelAutoAccept()
-            when (action) {
-                OverlayController.Action.ACCEPT -> offer.acceptNode?.let {
-                    acceptGesture(it, offer.appPackage)
-                    recordAction(scored, "manual_accept")
-                }
-                OverlayController.Action.DECLINE -> offer.declineNode?.let {
-                    GesturePerformer.tap(this, it.bounds)
-                    recordAction(scored, "manual_decline")
-                }
-                // Offer's on-card timer hit zero — same teardown as the
-                // card vanishing; never leave a pending tap behind.
-                OverlayController.Action.EXPIRED -> offerGone()
-                OverlayController.Action.CANCEL_AUTO -> Unit
-            }
+        overlay.show(scored) { action ->
+            if (action == OverlayController.Action.EXPIRED) offerGone()
             overlay.hide()
         }
 
@@ -270,140 +215,14 @@ class GigFlowAccessibilityService : AccessibilityService() {
             handler.postDelayed(r, secs * 1000L)
         }
 
-        // Automation: only when the user explicitly enabled it, and only when
-        // we actually found the button's bounds. Auto-accept runs on the
-        // configured countdown (like Mystro's) so the driver can cancel.
-        if (autoAcceptDelay > 0) {
-            scheduleAutoAccept(scored, offer.acceptNode!!, autoAcceptDelay)
-        } else if (prefs.autoDecline && scored.verdict == Verdict.BAD) {
-            offer.declineNode?.let { node ->
-                GesturePerformer.tap(this, node.bounds) { ok ->
-                    if (ok) recordAction(scored, "auto_decline")
-                }
-            }
-        }
     }
 
-    /**
-     * The accept affordance differs per app: most are a tap on the labelled
-     * control, but Amazon Flex uses a "swipe to accept" slider where a tap
-     * does nothing. Uber/Lyft need no special gesture — the parser resolves
-     * the tappable request card itself for those (tap-anywhere accept).
-     */
-    private fun acceptGesture(node: NodeRef, pkg: String, done: (Boolean) -> Unit = {}) {
-        if (pkg == "com.amazon.rabbit" || node.label.contains("swipe", ignoreCase = true)) {
-            GesturePerformer.swipeRight(this, node.bounds, done)
-        } else {
-            GesturePerformer.tap(this, node.bounds, done)
-        }
-    }
-
-    /** Tick the overlay countdown down, then tap accept at 0. */
-    private fun scheduleAutoAccept(scored: ScoredOffer, node: NodeRef, delaySec: Int) {
-        cancelAutoAccept() // a new offer can arrive before the last countdown ended
-        var left = delaySec
-        val ticker = object : Runnable {
-            override fun run() {
-                left--
-                if (left <= 0) {
-                    acceptGesture(node, scored.offer.appPackage) { ok ->
-                        if (ok) recordAction(scored, "auto_accept")
-                    }
-                    overlay.hide()
-                } else {
-                    overlay.setCountdown(left)
-                    handler.postDelayed(this, 1000)
-                }
-            }
-        }
-        countdownTicker = ticker
-        handler.postDelayed(ticker, 1000)
-    }
-
-    /**
-     * Auto shift tracking (opt-in): opening any watched driver app starts GPS
-     * mileage; 30 minutes without a watched app stops it. The overlay
-     * permission we already hold exempts us from background-FGS limits, but
-     * guard anyway — worst case is the user taps "Start shift" themselves.
-     */
-    private fun onDriverAppSeen(now: Long) {
-        lastDriverAppAt = now
-        if (!settings.autoTrackShift) return
-        if (!MileageTracker.hasLocationPermission(this)) return
-        if (!MileageTracker.running) {
-            try {
-                startForegroundService(MileageTracker.startIntent(this))
-            } catch (_: Exception) { /* background-start blocked — manual start still works */ }
-        }
-        // Arm the idle-stop check; every driver-app event pushes it out.
-        idleStopCheck?.let { handler.removeCallbacks(it) }
-        val check = Runnable {
-            if (System.currentTimeMillis() - lastDriverAppAt >= IDLE_STOP_MS &&
-                MileageTracker.running
-            ) {
-                stopService(MileageTracker.stopIntent(this))
-            }
-        }
-        idleStopCheck = check
-        handler.postDelayed(check, IDLE_STOP_MS)
-    }
-
-    /**
-     * Post-trip earnings capture — reads the completed-delivery / earnings
-     * summary screen and records the payout as a local earning.
-     */
-    private fun maybeLogCompletion(
-        pkg: String,
-        nodes: List<OfferParser.FlatNode>,
-        now: Long,
-        extra: Regex? = null,
-        extraSymbol: String = "$",
-    ) {
-        if (!settings.autoLogEarnings) return
-        val comp = CompletionParser.parse(pkg, nodes, extra, extraSymbol) ?: return
-        if (!loggedCompletions.add(comp.fingerprint)) return // already logged this screen
-        if (loggedCompletions.size > 200) loggedCompletions.clear()
-
-        val payload = JSONObject()
-            .put("amountCents", comp.payoutCents)
-            .put("category", "TRIP")
-            .put("platformKey", platformKeyFor(pkg))
-            .put("notes", "Auto-captured")
-            .put("earnedAt", now)
-        comp.tipCents?.let { payload.put("tipCents", it) }
-
-        localDb?.insert("earning", payload)
-        if (settings.voiceAlerts) {
-            tts?.speak(
-                "Logged ${spokenAmount(comp.payoutCents, comp.currencySymbol)}",
-                TextToSpeech.QUEUE_ADD, null, "earn",
-            )
-        }
-    }
 
     /** "12.50 dollars" / "1850 forints" — names and zero-decimal handling
      *  come from the currency registry. */
     private fun spokenAmount(cents: Int, symbol: String): String =
         Currencies.spokenAmount(cents, symbol)
 
-    private fun cancelAutoAccept() {
-        countdownTicker?.let { handler.removeCallbacks(it) }
-        countdownTicker = null
-    }
-
-    private fun recordAction(s: ScoredOffer, action: String) {
-        val o = s.offer
-        if (o.appPackage == "app.gigflow.test") return // test offer — don't log
-        OfferLog.add(this, OfferLog.Entry(
-            at = o.seenAt, pkg = o.appPackage, payoutCents = o.payoutCents,
-            distanceKm = o.distanceKm, durationMin = o.durationMin,
-            perMileCents = s.perMileCents, perHourCents = s.perHourCents,
-            verdict = s.verdict.name, action = action,
-            lat = null, lng = null,
-            reservation = o.isReservation,
-            currency = o.currencySymbol,
-        ))
-    }
 
     /** "· [tap] (btn_accept) Elfogadás" — clickability and the view id are
      *  what a parse-miss report needs: whether the app exposes real buttons
@@ -414,23 +233,9 @@ class GigFlowAccessibilityService : AccessibilityService() {
         append(text)
     }
 
-    /** Watched-package → platform key used to tag captured earnings. */
-    private fun platformKeyFor(pkg: String): String = when {
-        "uber" in pkg -> "uber"
-        "lyft" in pkg -> "lyft"
-        "doordash" in pkg -> "doordash"
-        "instacart" in pkg -> "instacart"
-        "amazon" in pkg || "rabbit" in pkg -> "amazon-flex"
-        "spark" in pkg || "walmart" in pkg -> "spark"
-        "wolt" in pkg -> "wolt"
-        "foodora" in pkg || "logistics.rider" in pkg -> "foodora"
-        else -> "other"
-    }
-
     private fun offerGone() {
         hideRunnable?.let { handler.removeCallbacks(it) }
         hideToken = ""
-        cancelAutoAccept() // never tap bounds for a card that's no longer up
         activeOffer = null
         lastFingerprint = ""
         overlay.hide()
@@ -442,7 +247,6 @@ class GigFlowAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         instance = null
-        cancelAutoAccept()
         overlay.hide()
         tts?.shutdown()
         tts = null
