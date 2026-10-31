@@ -2,7 +2,7 @@ name: Android prototype APK
 
 on:
   push:
-    branches: [ "mvp/uber-lyft-read-only" ]
+    branches: [ main, "mvp/uber-lyft-read-only" ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
