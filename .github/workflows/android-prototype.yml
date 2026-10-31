@@ -24,11 +24,10 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install SDK 36
-        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - name: Install Android SDK 36 using runner command-line tools
+        run: |
+          sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
+          test -f "${ANDROID_HOME}/platforms/android-36/android.jar"
 
       - name: Gradle 9.1.0 (required by Android Gradle Plugin 9.0)
         uses: gradle/actions/setup-gradle@v4
