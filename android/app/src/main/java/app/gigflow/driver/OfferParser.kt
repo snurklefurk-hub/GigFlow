@@ -2,6 +2,7 @@ package app.gigflow.driver
 
 import android.graphics.Rect
 import android.view.accessibility.AccessibilityNodeInfo
+import kotlin.math.roundToInt
 
 /**
  * Heuristic offer-card extractor.
@@ -189,20 +190,32 @@ object OfferParser {
         nodes: List<FlatNode>,
         extra: Regex? = null,
         extraSymbol: String = "$",
+    ): DetectedOffer? = parseTexts(pkg, nodes.map { it.text }, extra, extraSymbol)
+
+    /** Pure text entrypoint for replaying real Uber and Lyft offer samples in tests. */
+    fun parseTexts(
+        pkg: String,
+        texts: List<String>,
+        extra: Regex? = null,
+        extraSymbol: String = "$",
     ): DetectedOffer? {
-        val texts = nodes.map { it.text }
 
         // Collect money figures with their context. The card total is usually
         // the largest standalone amount; "incl. tip" lines become tips.
-        data class Money(val node: FlatNode, val amount: Double, val currency: String, val raw: String)
-        val moneyNodes = nodes.mapNotNull { n ->
-            moneyOf(n.text, extra, extraSymbol)?.let { (amount, cur) -> Money(n, amount, cur, n.text) }
+        data class Money(val amount: Double, val currency: String, val raw: String)
+        val moneyNodes = texts.mapNotNull { value ->
+            moneyOf(value, extra, extraSymbol)?.let { (amount, cur) -> Money(amount, cur, value) }
         }
         if (moneyNodes.isEmpty()) return null
 
-        val payout = moneyNodes
+        // A large unrelated number (bonus, balance, incentive) must NEVER
+        // silently replace the actual fare. Until a platform-specific offer
+        // card boundary is verified, ambiguous amounts are treated as unreadable.
+        val payoutCandidates = moneyNodes
             .filter { it.amount > 0.5 && !TIP_WORD.containsMatchIn(it.raw) }
-            .maxOfOrNull { it.amount } ?: return null
+            .map { it.amount }
+            .distinct()
+        val payout = payoutCandidates.singleOrNull() ?: return null
         val payoutMoney = moneyNodes.firstOrNull { it.amount == payout }
         val currency = payoutMoney?.currency ?: "$"
 
@@ -210,21 +223,42 @@ object OfferParser {
             .filter { TIP_WORD.containsMatchIn(it.raw) }
             .maxOfOrNull { it.amount }
 
-        // Distances: take the largest plausible one (total trip distance).
-        val distanceKm = texts.mapNotNull { t ->
-            MILES.find(t)?.groupValues?.get(1)?.toDoubleOrNull()?.times(1.609344)
-                ?: KM.find(t)?.groupValues?.get(1)?.toDoubleOrNull()
-        }.filter { it in 0.2..500.0 }.maxOrNull()
+        // Incoming rideshare requests can show two separate legs:
+        // first the unpaid drive to pickup, then the paying passenger ride.
+        // A total must include BOTH. When there are >2 segments, do not guess.
+        val distanceSegments = texts.flatMap { t ->
+            MILES.findAll(t).mapNotNull { m ->
+                m.groupValues[1].toDoubleOrNull()?.times(1.609344)
+            }.toList() + KM.findAll(t).mapNotNull { m ->
+                m.groupValues[1].toDoubleOrNull()
+            }.toList()
+        }.filter { it in 0.2..500.0 }.distinct()
 
-        // Duration: ignore countdown timers (tiny ints, "seconds").
-        val durationMin = texts.mapNotNull { t ->
-            if (TIMER_HINTS.containsMatchIn(t)) return@mapNotNull null
-            HOURS_MIN.find(t)?.let { m ->
-                val h = m.groupValues[1].toDouble()
-                val mnt = m.groupValues.getOrNull(2)?.toDoubleOrNull() ?: 0.0
-                h * 60 + mnt
-            } ?: MINUTES.find(t)?.groupValues?.get(1)?.toDoubleOrNull()
-        }.filter { it in 1.0..600.0 }.maxOrNull()
+        val durationSegments = texts.flatMap { t ->
+            if (TIMER_HINTS.containsMatchIn(t)) return@flatMap emptyList<Double>()
+            val hours = HOURS_MIN.findAll(t).map { m ->
+                m.groupValues[1].toDouble() * 60 +
+                    (m.groupValues.getOrNull(2)?.toDoubleOrNull() ?: 0.0)
+            }.toList()
+            if (hours.isNotEmpty()) hours
+            else MINUTES.findAll(t).mapNotNull { m ->
+                m.groupValues[1].toDoubleOrNull()
+            }.toList()
+        }.filter { it in 1.0..600.0 }.distinct()
+
+        val twoLegOffer = pkg in setOf("com.uber.driver", "com.lyft.driver") &&
+            distanceSegments.size == 2 && durationSegments.size == 2
+
+        val distanceKm = when {
+            twoLegOffer -> distanceSegments.sum()
+            distanceSegments.size == 1 -> distanceSegments.single()
+            else -> null
+        }
+        val durationMin = when {
+            twoLegOffer -> durationSegments.sum()
+            durationSegments.size == 1 -> durationSegments.single()
+            else -> null
+        }
 
         // Expiry countdown — "0:15" / "12s" style, Mystro shows it ticking.
         val expiresInSec = texts.mapNotNull { t ->
@@ -238,49 +272,19 @@ object OfferParser {
         // Need at least payout + one of distance/duration to call it an offer.
         if (distanceKm == null && durationMin == null) return null
 
-        fun nodeMatching(re: Regex, clickableOnly: Boolean): NodeRef? =
-            nodes.firstOrNull { n ->
-                re.containsMatchIn(n.text) && (!clickableOnly || n.clickable) && n.bounds.width() > 0
-            }?.let { NodeRef(it.bounds, it.text) }
-
-        // Uber/Lyft accept the request when *anywhere* on the card is tapped —
-        // there is no labelled Accept control, so the affordance is the card
-        // itself: the smallest clickable node containing the payout text.
-        fun tapAnywhereAccept(payoutNode: FlatNode?): NodeRef? {
-            if (pkg !in TAP_ANYWHERE_PKGS) return null
-            val m = payoutNode ?: return null
-            val cx = m.bounds.centerX(); val cy = m.bounds.centerY()
-            return nodes
-                .filter { it.clickable && it.bounds.contains(cx, cy) }
-                .minByOrNull { it.bounds.width() * it.bounds.height() }
-                ?.let { NodeRef(it.bounds, it.text) }
-        }
-
-        val isReservation = texts.any { RESERVATION.containsMatchIn(it) }
-
-        val accept = nodeMatching(ACCEPT_WORDS, clickableOnly = true)
-            ?: nodeMatching(ACCEPT_WORDS, clickableOnly = false)
-            ?: if (isReservation && pkg == "com.amazon.rabbit") {
-                nodeMatching(RESERVE_ACCEPT, clickableOnly = true)
-                    ?: nodeMatching(RESERVE_ACCEPT, clickableOnly = false)
-            } else null
-            ?: tapAnywhereAccept(payoutMoney?.node)
-        val decline = nodeMatching(DECLINE_WORDS, clickableOnly = true)
-            ?: nodeMatching(DECLINE_WORDS, clickableOnly = false)
-
         return DetectedOffer(
             appPackage = pkg,
-            payoutCents = (payout * 100).toInt(),
-            tipCents = tip?.let { (it * 100).toInt() },
+            payoutCents = (payout * 100).roundToInt(),
+            tipCents = tip?.let { (it * 100).roundToInt() },
             distanceKm = distanceKm?.let { Math.round(it * 10) / 10.0 },
             durationMin = durationMin,
             extraDistanceKm = null,
-            acceptNode = accept,
-            declineNode = decline,
+            acceptNode = null,
+            declineNode = null,
             rawTexts = texts,
             currencySymbol = currency,
             expiresInSec = expiresInSec,
-            isReservation = isReservation,
+            isReservation = false,
         )
     }
 }

@@ -14,26 +14,19 @@ import app.gigflow.driver.ui.*
 /**
  * GigFlow Driver — iOS-styled companion.
  *
- * Five tabs hosted in a single activity (no fragments, no deps):
- *   Dashboard · Offers · Track · Plan · Assistant
+ * Two focused screens hosted in a single activity (no fragments, no deps):
+ *   Offers · Reader
  *
  * The accessibility service runs independently of this UI — see
  * GigFlowAccessibilityService.
  */
 class MainActivity : Activity() {
 
-    companion object {
-        const val REQ_LOCATION = 7
-    }
-
     private lateinit var settings: SettingsRepository
     private lateinit var db: LocalDb
     private lateinit var p: Ios.Palette
 
-    private lateinit var dashboard: DashboardScreen
     private lateinit var offers: OffersScreen
-    private lateinit var track: TrackScreen
-    private lateinit var plan: PlanScreen
     private lateinit var assist: AssistScreen
 
     private lateinit var content: FrameLayout
@@ -46,20 +39,14 @@ class MainActivity : Activity() {
         db = LocalDb(this)
         p = Ios.palette(this)
 
-        dashboard = DashboardScreen(this, p, db, settings)
         offers = OffersScreen(this, p, settings)
-        track = TrackScreen(this, p, db, settings)
-        plan = PlanScreen(this, p, db, settings)
         assist = AssistScreen(this, p, settings, db)
 
         content = FrameLayout(this)
         tabBar = TabBar(this, p)
         tabBar.setTabs(listOf(
-            TabBar.Tab("house", "Home"),
             TabBar.Tab("tag", "Offers"),
-            TabBar.Tab("plus.circle", "Track"),
-            TabBar.Tab("calendar", "Plan"),
-            TabBar.Tab("slider", "Assist"),
+            TabBar.Tab("slider", "Reader"),
         ))
         tabBar.onSelect = { show(it) }
 
@@ -99,16 +86,12 @@ class MainActivity : Activity() {
         }
 
         show(0)
-        UpdateChecker.promptIfNewer(this, p)
     }
 
     private fun show(i: Int) {
         current = i
         val target = when (i) {
-            0 -> dashboard.screen
-            1 -> offers.screen
-            2 -> track.screen
-            3 -> plan.screen
+            0 -> offers.screen
             else -> assist.screen
         }
         if (target.parent == content) return
@@ -123,10 +106,7 @@ class MainActivity : Activity() {
     private fun refresh(i: Int): Unit {
         Ios.hapticsEnabled = settings.haptics
         return when (i) {
-            0 -> dashboard.refresh()
-            1 -> offers.refresh()
-            2 -> track.refresh()
-            3 -> plan.refresh()
+            0 -> offers.refresh()
             else -> assist.refresh()
         }
     }
@@ -136,16 +116,4 @@ class MainActivity : Activity() {
         if (::tabBar.isInitialized) refresh(current)
     }
 
-    /** Location permission result — granted means the user tapped Start shift. */
-    override fun onRequestPermissionsResult(
-        requestCode: Int, permissions: Array<out String>, grantResults: IntArray,
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == REQ_LOCATION) {
-            if (MileageTracker.hasLocationPermission(this)) {
-                startForegroundService(MileageTracker.startIntent(this))
-            }
-            if (::track.isInitialized) track.refresh()
-        }
-    }
 }

@@ -4,8 +4,7 @@
     android:accessibilityFeedbackType="feedbackGeneric"
     android:accessibilityFlags="flagRetrieveInteractiveWindows|flagReportViewIds|flagIncludeNotImportantViews"
     android:canRetrieveWindowContent="true"
-    android:canPerformGestures="true"
     android:notificationTimeout="80"
     android:description="@string/service_description"
     android:summary="@string/service_summary"
-    android:packageNames="com.uber.driver,com.lyft.driver,com.doordash.driverapp,com.instacart.shopper,com.amazon.rabbit,com.walmart.sparkdriver,com.wolt.courierapp,com.logistics.rider.foodora" />
+    android:packageNames="com.uber.driver,com.lyft.driver" />

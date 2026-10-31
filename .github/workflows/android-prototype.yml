@@ -24,10 +24,14 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Install Android SDK 36 using runner command-line tools
+      - name: Install Android SDK 36 with explicit SDK manager path
         run: |
-          sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
-          test -f "${ANDROID_HOME}/platforms/android-36/android.jar"
+          SDK_ROOT=/usr/local/lib/android/sdk
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          "$SDKMANAGER" --sdk_root="$SDK_ROOT" --install "platforms;android-36" "build-tools;36.0.0"
+          test -f "$SDK_ROOT/platforms/android-36/android.jar"
 
       - name: Gradle 9.1.0 (required by Android Gradle Plugin 9.0)
         uses: gradle/actions/setup-gradle@v4
