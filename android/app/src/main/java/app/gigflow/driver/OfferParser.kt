@@ -40,7 +40,7 @@ object OfferParser {
      * the last separator = thousands), "2 340"→2340, "1,234.56"→1234.56.
      */
     private fun parseAmount(raw: String): Double? {
-        val s = raw.replace(" ", "").replace(" ", "").replace("'", "")
+        val s = raw.replace(" ", "").replace("\u00A0", "").replace("\u202F", "").replace("'", "")
         val lastSep = maxOf(s.lastIndexOf('.'), s.lastIndexOf(','))
         val normalized = if (lastSep >= 0 && s.length - lastSep - 1 in 1..2) {
             s.substring(0, lastSep).filter { it.isDigit() } + "." + s.substring(lastSep + 1)
