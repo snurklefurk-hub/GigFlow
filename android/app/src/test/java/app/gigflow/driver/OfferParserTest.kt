@@ -122,4 +122,42 @@ class OfferParserTest {
         ))
         assertNull(offer)
     }
+    @Test fun uberExclusiveLongTripWithIncludedBoost() {
+        val offer = OfferParser.parseTexts("com.ubercab.driver", listOf(
+            "UberX", "Exclusive", "$57.07", "4.82", "Verified", "+$5.25 included",
+            "20 min (13.2 mi)", "W State St & Whitaker St, Savannah",
+            "51 mins (37.3 mi)", "William Hilton Pkwy, Hilton Head Island",
+            "Long trip (45+ min)", "Accept",
+        ))
+        assertNotNull(offer)
+        assertEquals(5707, offer!!.payoutCents)
+        assertEquals(50.5, offer.distanceKm!! / 1.609344, 0.02)
+        assertEquals(71.0, offer.durationMin!!, 0.01)
+    }
+
+    @Test fun lyftOfferWithEstimatedHourlyRateAndTurboZone() {
+        val offer = OfferParser.parseTexts("com.lyft.android.driver", listOf(
+            "$10.15", "$24.36/hr est. rate for this ride",
+            "4 min · 1.5 mi", "Kelsey & Kenwood, Bluffton",
+            "21 min · 11.2 mi", "Bluffton, Bluffton",
+            "Drop-off in 10% Turbo Zone", "Mike", "5.0", "Accept",
+        ))
+        assertNotNull(offer)
+        assertEquals(1015, offer!!.payoutCents)
+        assertEquals(12.7, offer.distanceKm!! / 1.609344, 0.02)
+        assertEquals(25.0, offer.durationMin!!, 0.01)
+    }
+
+    @Test fun uberMatchOfferHasSameTwoLegScoring() {
+        val offer = OfferParser.parseTexts("com.ubercab.driver", listOf(
+            "UberX", "$8.08", "5.00", "Verified",
+            "5 min (2.7 mi)", "New Riverside Rd & Wheelhouse Way, Bluffton",
+            "20 mins (11.5 mi)", "Fording Island Rd, Bluffton", "Match",
+        ))
+        assertNotNull(offer)
+        assertEquals(808, offer!!.payoutCents)
+        assertEquals(14.2, offer.distanceKm!! / 1.609344, 0.02)
+        assertEquals(25.0, offer.durationMin!!, 0.01)
+    }
+
 }
