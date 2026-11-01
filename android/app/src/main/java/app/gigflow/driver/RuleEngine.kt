@@ -1,5 +1,7 @@
 package app.gigflow.driver
 
+import kotlin.math.roundToInt
+
 /**
  * Offer rule engine — scores a parsed offer against the driver's
  * thresholds and produces a verdict plus human-readable reasons.
@@ -22,10 +24,10 @@ object RuleEngine {
     fun score(offer: DetectedOffer, prefs: RulePrefs): ScoredOffer {
         val perMile = offer.distanceKm
             ?.takeIf { it > 0 }
-            ?.let { (offer.payoutCents / (it / 1.609344)).toInt() } // $/mile
+            ?.let { (offer.payoutCents / (it / 1.609344)).roundToInt() } // $/mile
         val perHour = offer.durationMin
             ?.takeIf { it > 0 }
-            ?.let { (offer.payoutCents * 60.0 / it).toInt() }
+            ?.let { (offer.payoutCents * 60.0 / it).roundToInt() }
 
         val reasons = mutableListOf<String>()
         // Never make a confident recommendation from an incomplete card.
