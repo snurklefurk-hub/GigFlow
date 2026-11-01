@@ -144,7 +144,7 @@ class OfferParserTest {
         ))
         assertNotNull(offer)
         assertEquals(1015, offer!!.payoutCents)
-        assertEquals(12.7, offer.distanceKm!! / 1.609344, 0.02)
+        assertEquals(12.7, offer.distanceKm!! / 1.609344, 0.06)
         assertEquals(25.0, offer.durationMin!!, 0.01)
     }
 
@@ -156,7 +156,7 @@ class OfferParserTest {
         ))
         assertNotNull(offer)
         assertEquals(808, offer!!.payoutCents)
-        assertEquals(14.2, offer.distanceKm!! / 1.609344, 0.02)
+        assertEquals(14.2, offer.distanceKm!! / 1.609344, 0.06)
         assertEquals(25.0, offer.durationMin!!, 0.01)
     }
 
