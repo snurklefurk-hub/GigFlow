@@ -10,7 +10,7 @@ import org.junit.Test
 class OfferParserTest {
 
     @Test fun uberExclusiveWithPickupAndTripLegs() {
-        val offer = OfferParser.parseTexts("com.uber.driver", listOf(
+        val offer = OfferParser.parseTexts("com.ubercab.driver", listOf(
             "UberX", "Exclusive", "$19.06",
             "20 min (13.7 mi)",
             "Coconut Dr & Stone Crab Cir, Bloomingdale",
@@ -29,7 +29,7 @@ class OfferParserTest {
     }
 
     @Test fun singleRideMetricsStillParse() {
-        val offer = OfferParser.parseTexts("com.lyft.driver", listOf(
+        val offer = OfferParser.parseTexts("com.lyft.android.driver", listOf(
             "Lyft", "$12.50", "7.5 mi", "22 min", "Accept",
         ))
         assertNotNull(offer)
@@ -39,14 +39,14 @@ class OfferParserTest {
     }
 
     @Test fun threeDifferentLegsStayUnreadableRatherThanGuessing() {
-        val offer = OfferParser.parseTexts("com.uber.driver", listOf(
+        val offer = OfferParser.parseTexts("com.ubercab.driver", listOf(
             "UberX", "$19.06", "2 mi", "3 mi", "4 mi", "10 min", "15 min", "20 min",
         ))
         assertNull(offer)
     }
 
     @Test fun multipleConflictingPayoutsAreNeverGuessed() {
-        val offer = OfferParser.parseTexts("com.uber.driver", listOf(
+        val offer = OfferParser.parseTexts("com.ubercab.driver", listOf(
             "$19.06", "$25.00", "20 min (13.7 mi)", "26 min (19.4 mi)",
         ))
         assertNull(offer)
