@@ -52,8 +52,8 @@ class OfferParserTest {
     @Test fun lyftLiveOfferIgnoresEstimatedHourlyRateAsFare() {
         val offer = OfferParser.parseTexts("com.lyft.android.driver", listOf(
             "$10.00", "$26.08/hr est. rate for this ride",
-            "7 min � 4.5 mi", "Fenwick Village, Savannah",
-            "16 min � 10.3 mi", "Augusta & Minis, Savannah",
+            "7 min · 4.5 mi", "Fenwick Village, Savannah",
+            "16 min · 10.3 mi", "Augusta & Minis, Savannah",
             "Drop-off in 20% Turbo Zone", "5.0", "Lyft", "Accept",
         ))
         assertNotNull(offer)
@@ -78,7 +78,7 @@ class OfferParserTest {
     @Test fun hourlyRateSplitIntoSeparateNodeIsNotASecondOffer() {
         val offer = OfferParser.parseTexts("com.lyft.android.driver", listOf(
             "$10.00", "$26.08", "/hr est. rate for this ride",
-            "7 min � 4.5 mi", "16 min � 10.3 mi", "Accept",
+            "7 min · 4.5 mi", "16 min · 10.3 mi", "Accept",
         ))
         assertNotNull(offer)
         assertEquals(1000, offer!!.payoutCents)
@@ -96,7 +96,7 @@ class OfferParserTest {
     @Test fun secondaryHourlyRateAloneIsNotMistakenForPayout() {
         assertNull(OfferParser.parseTexts("com.lyft.android.driver", listOf(
             "$26.08/hr est. rate for this ride",
-            "7 min � 4.5 mi", "16 min � 10.3 mi", "Accept",
+            "7 min · 4.5 mi", "16 min · 10.3 mi", "Accept",
         )))
     }
 
@@ -139,8 +139,8 @@ class OfferParserTest {
     @Test fun lyftOfferWithEstimatedHourlyRateAndTurboZone() {
         val offer = OfferParser.parseTexts("com.lyft.android.driver", listOf(
             "$10.15", "$24.36/hr est. rate for this ride",
-            "4 min � 1.5 mi", "Kelsey & Kenwood, Bluffton",
-            "21 min � 11.2 mi", "Bluffton, Bluffton",
+            "4 min · 1.5 mi", "Kelsey & Kenwood, Bluffton",
+            "21 min · 11.2 mi", "Bluffton, Bluffton",
             "Drop-off in 10% Turbo Zone", "Mike", "5.0", "Accept",
         ))
         assertNotNull(offer)
@@ -169,7 +169,7 @@ class OfferParserTest {
         ))
         assertNotNull(offer)
         assertTrue(offer!!.isReservation)
-        assertTrue(!RuleEngine.isEligible(offer))
+        assertFalse(RuleEngine.isEligible(offer))
         assertNull(RuleEngine.scoreIfEligible(offer, RulePrefs()))
     }
 
@@ -202,4 +202,3 @@ class OfferParserTest {
     }
 
 }
-
