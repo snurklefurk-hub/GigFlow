@@ -164,10 +164,15 @@ class GigFlowAccessibilityService : AccessibilityService() {
         val curSymbol = settings.currencySymbol
         val extraRe = OfferParser.extraMoney(settings.currencyCode, curSymbol)
 
+        // OCR is the primary reader for the rendered offer. Do this before
+        // consulting the view hierarchy: Uber/Lyft routinely provide an
+        // event with no readable root, and that must still be an OCR attempt.
+        recognizeScreenshot(pkg, prefs)
+
         val roots = offerRoots(event, pkg)
         if (roots.isEmpty()) {
-            Diagnostics.record(this, pkg, "idle",
-                listOf("(event received but Uber/Lyft window not readable)"))
+            Diagnostics.record(this, pkg, "ocr_requested",
+                listOf("(OCR requested; accessibility window not readable)"))
             maybeOfferGone(now)
             return
         }
@@ -195,12 +200,6 @@ class GigFlowAccessibilityService : AccessibilityService() {
         val nodes = best?.first ?: readings.maxByOrNull { it.first.size }!!.first
         val offer = best?.second
         if (offer == null) {
-            // Many modern driver apps render their cards in a surface with no
-            // accessible text. Android 11+ permits an enabled accessibility
-            // service to request a one-frame capture; OCR is local and the
-            // bitmap is immediately released. Older/restricted builds retain
-            // the accessibility-text path and diagnostics below.
-            recognizeScreenshotFallback(pkg, prefs)
             // A screen with a money figure but no parse is a "miss" — the
             // card was probably there but the layout beat the heuristic.
             // Record it so Diagnostics can show what we saw.
@@ -278,7 +277,7 @@ class GigFlowAccessibilityService : AccessibilityService() {
 
     }
 
-    private fun recognizeScreenshotFallback(pkg: String, prefs: RulePrefs) {
+    private fun recognizeScreenshot(pkg: String, prefs: RulePrefs) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
         try {
             takeScreenshot(Display.DEFAULT_DISPLAY, mainExecutor, object : TakeScreenshotCallback {
@@ -305,9 +304,15 @@ class GigFlowAccessibilityService : AccessibilityService() {
                         handler.post { overlay.show(scored) { overlay.hide() } }
                     }
                 }
-                override fun onFailure(errorCode: Int) { /* accessibility text remains the fallback */ }
+                override fun onFailure(errorCode: Int) {
+                    Diagnostics.record(this@GigFlowAccessibilityService, pkg, "ocr_unavailable",
+                        listOf("Screenshot capture unavailable (Android error $errorCode); using accessibility text."))
+                }
             })
-        } catch (_: SecurityException) { /* user/OEM disabled capture capability */ }
+        } catch (_: SecurityException) {
+            Diagnostics.record(this, pkg, "ocr_unavailable",
+                listOf("Screenshot capture blocked by this Android build; using accessibility text."))
+        }
     }
 
 
