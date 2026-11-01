@@ -3,6 +3,11 @@ package app.gigflow.driver
 import android.accessibilityservice.AccessibilityService
 import android.os.Handler
 import android.os.Looper
+import android.os.Build
+import android.view.Display
+import android.accessibilityservice.AccessibilityService.TakeScreenshotCallback
+import android.accessibilityservice.AccessibilityService.ScreenshotResult
+import android.graphics.Bitmap
 import android.speech.tts.TextToSpeech
 import android.view.accessibility.AccessibilityEvent
 
@@ -190,6 +195,12 @@ class GigFlowAccessibilityService : AccessibilityService() {
         val nodes = best?.first ?: readings.maxByOrNull { it.first.size }!!.first
         val offer = best?.second
         if (offer == null) {
+            // Many modern driver apps render their cards in a surface with no
+            // accessible text. Android 11+ permits an enabled accessibility
+            // service to request a one-frame capture; OCR is local and the
+            // bitmap is immediately released. Older/restricted builds retain
+            // the accessibility-text path and diagnostics below.
+            recognizeScreenshotFallback(pkg, prefs)
             // A screen with a money figure but no parse is a "miss" — the
             // card was probably there but the layout beat the heuristic.
             // Record it so Diagnostics can show what we saw.
@@ -214,7 +225,7 @@ class GigFlowAccessibilityService : AccessibilityService() {
         val scored = RuleEngine.score(offer, prefs)
         activeOffer = scored
 
-        OfferLog.add(this, OfferLog.Entry(
+        OfferLog.addIfNew(this, OfferLog.Entry(
             at = offer.seenAt,
             pkg = pkg,
             payoutCents = offer.payoutCents,
@@ -228,7 +239,7 @@ class GigFlowAccessibilityService : AccessibilityService() {
             lng = null,
             reservation = offer.isReservation,
             currency = offer.currencySymbol,
-        ))
+        ), offer.fingerprint)
 
         // Mystro-style voice alert for the verdict, when enabled.
         if (settings.voiceAlerts) {
@@ -265,6 +276,38 @@ class GigFlowAccessibilityService : AccessibilityService() {
             handler.postDelayed(r, secs * 1000L)
         }
 
+    }
+
+    private fun recognizeScreenshotFallback(pkg: String, prefs: RulePrefs) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+        try {
+            takeScreenshot(Display.DEFAULT_DISPLAY, mainExecutor, object : TakeScreenshotCallback {
+                override fun onSuccess(screenshot: ScreenshotResult) {
+                    val source = Bitmap.wrapHardwareBuffer(screenshot.hardwareBuffer, screenshot.colorSpace)
+                    val bitmap = source?.copy(Bitmap.Config.ARGB_8888, false)
+                    source?.recycle()
+                    screenshot.hardwareBuffer.close()
+                    if (bitmap == null) return
+                    OcrOfferRecognizer.recognize(bitmap, pkg, settings.currencyCode, settings.currencySymbol) { offer, texts ->
+                        bitmap.recycle()
+                        if (offer == null || offer.fingerprint == lastFingerprint) return@recognize
+                        lastFingerprint = offer.fingerprint
+                        lastSeenAt = System.currentTimeMillis()
+                        val scored = RuleEngine.score(offer, prefs)
+                        activeOffer = scored
+                        OfferLog.addIfNew(this@GigFlowAccessibilityService, OfferLog.Entry(
+                            at = offer.seenAt, pkg = pkg, payoutCents = offer.payoutCents,
+                            distanceKm = offer.distanceKm, durationMin = offer.durationMin,
+                            perMileCents = scored.perMileCents, perHourCents = scored.perHourCents,
+                            verdict = scored.verdict.name, action = "shown", currency = offer.currencySymbol,
+                        ), offer.fingerprint)
+                        Diagnostics.record(this@GigFlowAccessibilityService, pkg, "offer", texts)
+                        handler.post { overlay.show(scored) { overlay.hide() } }
+                    }
+                }
+                override fun onFailure(errorCode: Int) { /* accessibility text remains the fallback */ }
+            })
+        } catch (_: SecurityException) { /* user/OEM disabled capture capability */ }
     }
 
 

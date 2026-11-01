@@ -48,6 +48,8 @@ android {
 dependencies {
     // FileProvider for handing the downloaded update APK to the installer.
     implementation("androidx.core:core:1.13.1")
+    // Bundled recognizer: OCR stays entirely on-device.
+    implementation("com.google.mlkit:text-recognition:16.0.1")
     testImplementation("junit:junit:4.13.2")
 }
 

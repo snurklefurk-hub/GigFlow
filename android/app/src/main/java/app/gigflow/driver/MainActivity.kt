@@ -1,7 +1,11 @@
 package app.gigflow.driver
 
 import android.app.Activity
+import android.app.AlertDialog
+import android.content.Intent
 import android.graphics.Color
+import android.graphics.BitmapFactory
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.View
@@ -9,6 +13,9 @@ import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.EditText
+import android.widget.LinearLayout
+import android.widget.Toast
 import app.gigflow.driver.ui.*
 
 /**
@@ -89,6 +96,55 @@ class MainActivity : Activity() {
         }
 
         show(0)
+        handleScreenshotIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleScreenshotIntent(intent)
+    }
+
+    @Deprecated("Activity result API is sufficient for this small, no-dependency picker")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 4101 && resultCode == RESULT_OK) data?.data?.let(::importScreenshot)
+    }
+
+    /** Share-sheet and picker entry point. The OCR result is always reviewed. */
+    fun importScreenshot(uri: Uri) {
+        val bytes = try { contentResolver.openInputStream(uri)?.use { it.readBytes() } } catch (_: Exception) { null }
+        val bitmap = bytes?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
+        if (bitmap == null || bytes == null) { Toast.makeText(this, "Couldn't open that image", Toast.LENGTH_SHORT).show(); return }
+        OcrOfferRecognizer.recognize(bitmap, "com.ubercab.driver", settings.currencyCode, settings.currencySymbol) { offer, _ ->
+            runOnUiThread { showCorrection(offer, bytes) }
+        }
+    }
+
+    private fun handleScreenshotIntent(intent: Intent?) {
+        if (intent?.action != Intent.ACTION_SEND || !intent.type.orEmpty().startsWith("image/")) return
+        @Suppress("DEPRECATION") val uri = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM) ?: return
+        importScreenshot(uri)
+    }
+
+    private fun showCorrection(parsed: DetectedOffer?, imageBytes: ByteArray) {
+        val offer = parsed ?: DetectedOffer("com.ubercab.driver", 0, null, null, null, null,
+            acceptNode = null, declineNode = null, rawTexts = emptyList(), currencySymbol = settings.currencySymbol)
+        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(48, 16, 48, 0) }
+        fun field(label: String, value: String) = EditText(this).apply {
+            hint = label; setText(value); inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+        }.also(col::addView)
+        val payout = field("Payout", "%.2f".format(offer.payoutCents / 100.0))
+        val distance = field("Total miles", offer.distanceKm?.let { "%.2f".format(it / 1.609344) } ?: "")
+        val minutes = field("Total minutes", offer.durationMin?.toString() ?: "")
+        AlertDialog.Builder(this).setTitle("Review screenshot OCR")
+            .setMessage("Correct fields before saving a private regression case. The image is not retained.")
+            .setView(col).setNegativeButton("Discard", null).setPositiveButton("Save locally") { _, _ ->
+                val fixed = offer.copy(payoutCents = ((payout.text.toString().toDoubleOrNull() ?: 0.0) * 100).toInt(),
+                    distanceKm = distance.text.toString().toDoubleOrNull()?.times(1.609344), durationMin = minutes.text.toString().toDoubleOrNull())
+                LocalRegressionCorpus.add(this, imageBytes, fixed)
+                Toast.makeText(this, "Saved locally (${LocalRegressionCorpus.size(this)} cases)", Toast.LENGTH_SHORT).show()
+            }.show()
     }
 
     private fun show(i: Int) {

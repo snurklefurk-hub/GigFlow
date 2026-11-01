@@ -49,6 +49,26 @@ object OfferLog {
         prefs.edit().putString(KEY, next.toString()).apply()
     }
 
+    /** Persisted dedupe prevents an offer being logged twice after service
+     * restart, OCR/accessibility races, or a card briefly re-rendering. */
+    fun addIfNew(context: Context, e: Entry, fingerprint: String, windowMs: Long = 120_000L): Boolean {
+        val prefs = context.getSharedPreferences("gigflow_log", Context.MODE_PRIVATE)
+        val existing = JSONArray(prefs.getString(KEY, "[]"))
+        for (i in 0 until existing.length()) {
+            val old = existing.getJSONObject(i)
+            if (old.optString("fingerprint") == fingerprint && e.at - old.optLong("at") < windowMs) return false
+        }
+        val o = JSONObject().put("at", e.at).put("pkg", e.pkg).put("payout", e.payoutCents)
+            .put("verdict", e.verdict).put("action", e.action).put("fingerprint", fingerprint)
+        e.distanceKm?.let { o.put("km", it) }; e.durationMin?.let { o.put("min", it) }
+        e.perMileCents?.let { o.put("perMile", it) }; e.perHourCents?.let { o.put("perHour", it) }
+        if (e.reservation) o.put("reservation", true); o.put("currency", e.currency)
+        val next = JSONArray().put(o)
+        for (i in 0 until minOf(existing.length(), MAX - 1)) next.put(existing.get(i))
+        prefs.edit().putString(KEY, next.toString()).apply()
+        return true
+    }
+
     fun all(context: Context): List<Entry> {
         val prefs = context.getSharedPreferences("gigflow_log", Context.MODE_PRIVATE)
         val arr = JSONArray(prefs.getString(KEY, "[]"))

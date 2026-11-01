@@ -191,6 +191,17 @@ class AssistScreen(
             if (svc != null) svc.testOffer()
             else Toast.makeText(ctx, "Enable the accessibility service first", Toast.LENGTH_SHORT).show()
         })
+        card.addView(Sections.separator(ctx, p))
+        card.addView(Sections.row(ctx, p,
+            title = "Test an offer screenshot",
+            subtitle = "OCR locally, correct fields, then save a private regression case",
+            iconGlyph = "doc", iconTint = p.tint, chevron = true,
+        ) {
+            val pick = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                type = "image/*"; addCategory(Intent.CATEGORY_OPENABLE)
+            }
+            (ctx as? android.app.Activity)?.startActivityForResult(pick, 4101)
+        })
         c_footer(card, "Read-only by design: no accept, decline, tap, swipe, or app control.")
         return card
     }
