@@ -155,7 +155,7 @@ object OfferParser {
 
     /** Apps where the whole request card accepts on tap — no labelled button.
      *  Uber docs: "tap anywhere on the black bar"; Lyft: "tap anywhere". */
-    private val TAP_ANYWHERE_PKGS = setOf("com.uber.driver", "com.lyft.driver")
+    private val TAP_ANYWHERE_PKGS = setOf("com.ubercab.driver", "com.lyft.android.driver")
 
     data class FlatNode(
         val text: String,
@@ -276,7 +276,7 @@ object OfferParser {
             }.toList()
         }.filter { it in 1.0..600.0 }.distinct()
 
-        val isRideshare = pkg == "com.uber.driver" || pkg == "com.lyft.driver"
+        val isRideshare = pkg == "com.ubercab.driver" || pkg == "com.lyft.android.driver"
 
         // Both supplied field layouts put each leg's minutes and miles in
         // the same label: "10 min (6.3 mi)" or "7 min · 4.5 mi".
