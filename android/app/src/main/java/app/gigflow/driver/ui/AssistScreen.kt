@@ -340,11 +340,6 @@ class AssistScreen(
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         })
-        val (rRes, _) = Sections.switchRow(ctx, p, "Include reserved offers",
-            "Scheduled work can auto-accept too", settings.autoAcceptReservations) {
-            settings.autoAcceptReservations = it
-        }
-        card.addView(rRes)
         // Dry-run the whole pipeline: score → overlay → voice. No logging,
         // no taps — safe to use while parked.
         card.addView(Sections.separator(ctx, p))
@@ -383,7 +378,6 @@ class AssistScreen(
         val (rPayout, payout) = Sections.formField(ctx, p, "Min payout", "%.2f".format(settings.minPayoutCents / 100.0), hint = cur)
         val (rDist, dist) = Sections.formField(ctx, p, "Max distance (${if (isKm) "km" else "mi"})",
             "%.1f".format(if (isKm) settings.maxDistanceKm else settings.maxDistanceKm * 0.621371))
-        card.addView(rCur); card.addView(Sections.separator(ctx, p))
         card.addView(rMile); card.addView(Sections.separator(ctx, p))
         card.addView(rHour); card.addView(Sections.separator(ctx, p))
         card.addView(rPayout); card.addView(Sections.separator(ctx, p))
@@ -404,7 +398,7 @@ class AssistScreen(
                 Toast.makeText(ctx, "Saved", Toast.LENGTH_SHORT).show()
             }
         })
-        c_footer(card, "Thresholds are in your currency — Ft drivers set forint amounts (e.g. 600 Ft/km).")
+        c_footer(card, "Set the minimum value and maximum distance for live offers.")
         return card
     }
 
@@ -527,16 +521,9 @@ class AssistScreen(
         }.start()
     }
 
-    /** Units, overlay timing, haptics, log management. */
+    /** Overlay timing, haptics and log management. */
     private fun preferencesCard(): View {
         val card = Sections.card(ctx, p)
-
-        // Distance unit — segmented
-        card.addView(prefSegmentedRow("Units", listOf("Miles", "Kilometres"),
-            if (settings.distanceUnit == "KM") 1 else 0) {
-            settings.distanceUnit = if (it == 1) "KM" else "MI"
-        })
-        card.addView(Sections.separator(ctx, p))
 
         // Overlay timeout — segmented
         val secs = listOf(0, 10, 30, 60)

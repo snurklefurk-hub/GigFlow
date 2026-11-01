@@ -1,6 +1,7 @@
 package app.gigflow.driver
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -158,6 +159,46 @@ class OfferParserTest {
         assertEquals(808, offer!!.payoutCents)
         assertEquals(14.2, offer.distanceKm!! / 1.609344, 0.06)
         assertEquals(25.0, offer.durationMin!!, 0.01)
+    }
+
+    @Test fun uberReservationTileIsRecognizedButNeverScored() {
+        val offer = OfferParser.parseTexts("com.ubercab.driver", listOf(
+            "UberX", "Reservation", "$28.42",
+            "12 min (7.1 mi)", "Pickup at 6:45 PM",
+            "24 min (15.3 mi)", "Accept",
+        ))
+        assertNotNull(offer)
+        assertTrue(offer!!.isReservation)
+        assertFalse(RuleEngine.isEligible(offer))
+        assertNull(RuleEngine.scoreIfEligible(offer, RulePrefs()))
+    }
+
+    @Test fun currentUberXReserveTripRadarTileIsNeverScored() {
+        val offer = OfferParser.parseTexts("com.ubercab.driver", listOf(
+            "Already viewed", "UberX Reserve", "$22.09", "5.00", "+$13.00 included",
+            "12 min (6.9 mi)", "Bluffton Pkwy, Bluffton",
+            "13 mins (7.2 mi)", "Levant Rd & Old Miller Rd, Bluffton",
+            "Reservation", "Match",
+        ))
+        assertNotNull(offer)
+        assertTrue(offer!!.isReservation)
+        assertFalse(RuleEngine.isEligible(offer))
+        assertNull(RuleEngine.scoreIfEligible(offer, RulePrefs()))
+    }
+
+    @Test fun uberPriorityLongTripIsNotMistakenForReservation() {
+        val offer = OfferParser.parseTexts("com.ubercab.driver", listOf(
+            "UberX Priority", "Exclusive", "$102.01", "4.88", "Verified",
+            "+$2.25 included", "5% Pro Perk included",
+            "+$5.11 included for priority pickup",
+            "21 min (10.9 mi)", "Shady Glen Dr & Shady Glen Way, Bluffton",
+            "2 hr 34 min (153.4 mi)", "Pendleton St & Sumter St, Columbia",
+            "Long trip (45+ min)", "Accept",
+        ))
+        assertNotNull(offer)
+        assertFalse(offer!!.isReservation)
+        assertTrue(RuleEngine.isEligible(offer))
+        assertNotNull(RuleEngine.scoreIfEligible(offer, RulePrefs()))
     }
 
 }
