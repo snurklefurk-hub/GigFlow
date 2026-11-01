@@ -21,6 +21,16 @@ data class RulePrefs(
 
 object RuleEngine {
 
+    fun isEligible(offer: DetectedOffer): Boolean = !offer.isReservation
+
+    /**
+     * Reserved/scheduled rides are intentionally outside Moonbeam's live-offer
+     * workflow. Uber can render them in a normal-looking offer tile, so this
+     * gate must run before any rate calculation or verdict is produced.
+     */
+    fun scoreIfEligible(offer: DetectedOffer, prefs: RulePrefs): ScoredOffer? =
+        if (isEligible(offer)) score(offer, prefs) else null
+
     fun score(offer: DetectedOffer, prefs: RulePrefs): ScoredOffer {
         val perMile = offer.distanceKm
             ?.takeIf { it > 0 }

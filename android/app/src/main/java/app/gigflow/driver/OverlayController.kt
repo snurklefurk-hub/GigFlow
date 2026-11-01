@@ -65,6 +65,12 @@ class OverlayController(private val service: AccessibilityService) {
 
         val container = LinearLayout(service).apply {
             orientation = LinearLayout.VERTICAL
+            isClickable = true
+            isFocusable = false
+            setOnClickListener {
+                onAction(Action.DISMISSED)
+                hide()
+            }
             setPadding(16.dp(), 10.dp(), 16.dp(), 12.dp())
             background = GradientDrawable().apply {
                 cornerRadius = 14.dp().toFloat()
@@ -146,7 +152,7 @@ class OverlayController(private val service: AccessibilityService) {
         expiry = null
     }
 
-    enum class Action { EXPIRED }
+    enum class Action { EXPIRED, DISMISSED }
 
     companion object {
         /** Check the service is actually enabled — used by MainActivity. */

@@ -11,6 +11,7 @@ This project is a focused derivative of [GigFlow](https://github.com/w0wzahh/Gig
 - Read Uber and Lyft offer text through Android Accessibility Services.
 - Extract payout, trip distance, and estimated duration from the currently visible offer.
 - Score offers against adjustable minimum $/mile, $/hour, payout, and maximum-distance thresholds.
+- Ignore reserved/scheduled rides even when Uber presents them as ordinary offer tiles.
 - Show a small read-only verdict overlay.
 - Keep diagnostics and offer history locally on the device.
 

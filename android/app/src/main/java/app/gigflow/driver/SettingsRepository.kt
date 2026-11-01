@@ -103,11 +103,6 @@ class SettingsRepository(context: Context) {
         get() = prefs.getBoolean("auto_log_earnings", true)
         set(v) = prefs.edit().putBoolean("auto_log_earnings", v).apply()
 
-    /** Whether the auto-accept countdown also fires on scheduled/reserved work. */
-    var autoAcceptReservations: Boolean
-        get() = prefs.getBoolean("auto_accept_reservations", true)
-        set(v) = prefs.edit().putBoolean("auto_accept_reservations", v).apply()
-
     // ---- Per-app rule overrides (Mystro's per-service filters) ----
 
     private fun overrides(): JSONObject =

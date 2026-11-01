@@ -160,4 +160,16 @@ class OfferParserTest {
         assertEquals(25.0, offer.durationMin!!, 0.01)
     }
 
+    @Test fun uberReservationTileIsRecognizedButNeverScored() {
+        val offer = OfferParser.parseTexts("com.ubercab.driver", listOf(
+            "UberX", "Reservation", "$28.42",
+            "12 min (7.1 mi)", "Pickup at 6:45 PM",
+            "24 min (15.3 mi)", "Accept",
+        ))
+        assertNotNull(offer)
+        assertTrue(offer!!.isReservation)
+        assertTrue(!RuleEngine.isEligible(offer))
+        assertNull(RuleEngine.scoreIfEligible(offer, RulePrefs()))
+    }
+
 }

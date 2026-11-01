@@ -75,7 +75,7 @@ class GigFlowAccessibilityService : AccessibilityService() {
                 currencySymbol = settings.currencySymbol,
                 expiresInSec = 12,
             )
-            val scored = RuleEngine.score(o, settings.rules())
+            val scored = RuleEngine.scoreIfEligible(o, settings.rules()) ?: return@post
             activeOffer = scored // so stopWatching()/onInterrupt clear it too
             overlay.show(scored) { action ->
                 if (action == OverlayController.Action.EXPIRED) offerGone()
@@ -211,6 +211,10 @@ class GigFlowAccessibilityService : AccessibilityService() {
             maybeOfferGone(now)
             return
         }
+        if (!RuleEngine.isEligible(offer)) {
+            ignoreReservation(offer, pkg, nodes.map { it.diag() })
+            return
+        }
         Diagnostics.record(this, pkg, "offer", nodes.map { it.diag() })
 
         // Same card still on screen — don't rescore/re-overlay every frame.
@@ -221,7 +225,7 @@ class GigFlowAccessibilityService : AccessibilityService() {
         lastFingerprint = offer.fingerprint
         lastSeenAt = now
 
-        val scored = RuleEngine.score(offer, prefs)
+        val scored = RuleEngine.scoreIfEligible(offer, prefs) ?: return
         activeOffer = scored
 
         OfferLog.addIfNew(this, OfferLog.Entry(
@@ -292,7 +296,11 @@ class GigFlowAccessibilityService : AccessibilityService() {
                         if (offer == null || offer.fingerprint == lastFingerprint) return@recognize
                         lastFingerprint = offer.fingerprint
                         lastSeenAt = System.currentTimeMillis()
-                        val scored = RuleEngine.score(offer, prefs)
+                        val scored = RuleEngine.scoreIfEligible(offer, prefs)
+                        if (scored == null) {
+                            ignoreReservation(offer, pkg, texts)
+                            return@recognize
+                        }
                         activeOffer = scored
                         OfferLog.addIfNew(this@GigFlowAccessibilityService, OfferLog.Entry(
                             at = offer.seenAt, pkg = pkg, payoutCents = offer.payoutCents,
@@ -329,6 +337,18 @@ class GigFlowAccessibilityService : AccessibilityService() {
         if (clickable) append("[tap] ")
         viewId?.substringAfterLast('/')?.let { append("($it) ") }
         append(text)
+    }
+
+    /** Clear any prior live verdict and remember this tile without scoring,
+     * logging or speaking it. This also deduplicates OCR/accessibility passes. */
+    private fun ignoreReservation(offer: DetectedOffer, pkg: String, texts: List<String>) {
+        hideRunnable?.let { handler.removeCallbacks(it) }
+        hideToken = ""
+        activeOffer = null
+        overlay.hide()
+        lastFingerprint = offer.fingerprint
+        lastSeenAt = System.currentTimeMillis()
+        Diagnostics.record(this, pkg, "reservation_ignored", texts)
     }
 
     private fun offerGone() {
