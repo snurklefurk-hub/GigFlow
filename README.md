@@ -27,6 +27,23 @@ If an offer cannot be read with confidence, the reader records a diagnostic rath
 
 Offer text and diagnostics stay on-device. The MVP declares no location or notification permissions. Only the signed-release updater uses internet access and the user-approved Android package installer.
 
+## Confirmed driver-app identifiers
+
+Moonbeam's Accessibility Service must monitor the **actual Android package
+IDs**, not the display names: Uber Driver is `com.ubercab.driver`, and
+Lyft Driver is `com.lyft.android.driver`. These values must stay synchronized
+between `res/xml/accessibility_service_config.xml`, the watched-app UI,
+service heartbeat, and offer parser. The previous placeholder package names
+prevented Android from delivering offer-screen events.
+
+Ordinary live offers are tested against labels from field screenshots:
+Uber's `+$1.75 included` is already inside the advertised payout, and
+Lyft's estimated `$26.08/hr` is not a second payout. The reader independently
+calculates total pickup + trip miles, minutes, $/mile and $/hour, and rejects
+conflicting or incomplete details rather than guessing. Screenshots do **not**
+prove accessibility text visibility; on-device diagnostics are still needed
+to verify the actual accessibility tree on different devices and app versions.
+
 ## Keeping Moonbeam active in Uber and Lyft
 
 Moonbeam's **Android Accessibility service** is system-managed and independent
