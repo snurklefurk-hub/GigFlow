@@ -155,7 +155,7 @@ object OfferParser {
 
     /** Apps where the whole request card accepts on tap — no labelled button.
      *  Uber docs: "tap anywhere on the black bar"; Lyft: "tap anywhere". */
-    private val TAP_ANYWHERE_PKGS = setOf("com.uber.driver", "com.lyft.driver")
+    private val TAP_ANYWHERE_PKGS = setOf("com.ubercab.driver", "com.lyft.android.driver")
 
     data class FlatNode(
         val text: String,
@@ -200,24 +200,54 @@ object OfferParser {
         extraSymbol: String = "$",
     ): DetectedOffer? {
 
-        // Collect money figures with their context. The card total is usually
-        // the largest standalone amount; "incl. tip" lines become tips.
-        data class Money(val amount: Double, val currency: String, val raw: String)
-        val moneyNodes = texts.mapNotNull { value ->
-            moneyOf(value, extra, extraSymbol)?.let { (amount, cur) -> Money(amount, cur, value) }
+        // Real Uber/Lyft cards contain other currency figures besides the
+        // offered fare: Uber "+$1.75 included" and Lyft "$26.08/hr est. rate".
+        // Treat these as annotations, never as extra payout or a conflicting
+        // offer. Preserve conservative rejection of two *real* fare amounts.
+        data class Money(val amount: Double, val currency: String, val raw: String, val index: Int)
+        val moneyNodes = texts.flatMapIndexed { index, value ->
+            val hits = MONEY.findAll(value).toList()
+            if (hits.isEmpty()) {
+                listOfNotNull(moneyOf(value, extra, extraSymbol)?.let { (amount, cur) ->
+                    Money(amount, cur, value, index)
+                })
+            } else {
+                hits.mapIndexedNotNull { hitIndex, hit ->
+                    // If a parent accessibility node joins fare and bonus
+                    // into one string, separate their local contexts.
+                    val from = if (hitIndex == 0) 0 else hits[hitIndex - 1].range.last + 1
+                    val to = if (hitIndex == hits.lastIndex) value.length
+                        else hits[hitIndex + 1].range.first
+                    moneyOf(hit.value)?.let { (amount, cur) ->
+                        Money(amount, cur, value.substring(from, to).trim(), index)
+                    }
+                }
+            }
         }
         if (moneyNodes.isEmpty()) return null
 
-        // A large unrelated number (bonus, balance, incentive) must NEVER
-        // silently replace the actual fare. Until a platform-specific offer
-        // card boundary is verified, ambiguous amounts are treated as unreadable.
+        val supplementaryMoney = Regex(
+            """(?i)\b(?:included|boost|surge|bonus|promo|promotion|incentive|hourly)\b|/\s*(?:hr|hour)\b|\b(?:per\s+hour|est\.?\s*rate|rate\s+for\s+this\s+ride)\b"""
+        )
+        fun hasSecondaryContext(m: Money): Boolean {
+            // Android may expose "$26.08" and "/hr est. rate" as two
+            // separate nodes. Only use a nearby non-money label as context.
+            val next = texts.getOrNull(m.index + 1)?.trim().orEmpty()
+            val context = if (next.length <= 60 &&
+                moneyOf(next, extra, extraSymbol) == null) m.raw + " " + next
+                else m.raw
+            return supplementaryMoney.containsMatchIn(context) ||
+                m.raw.trimStart().startsWith("+")
+        }
         val payoutCandidates = moneyNodes
-            .filter { it.amount > 0.5 && !TIP_WORD.containsMatchIn(it.raw) }
-            .map { it.amount }
-            .distinct()
-        val payout = payoutCandidates.singleOrNull() ?: return null
-        val payoutMoney = moneyNodes.firstOrNull { it.amount == payout }
-        val currency = payoutMoney?.currency ?: "$"
+            .filter { it.amount > 0.5 &&
+                !TIP_WORD.containsMatchIn(it.raw) &&
+                !hasSecondaryContext(it)
+            }
+            .distinctBy { it.amount to it.currency }
+        val payoutMoney = payoutCandidates.singleOrNull() ?: return null
+        val payout = payoutMoney.amount
+        val currency = payoutMoney.currency
 
         val tip = moneyNodes
             .filter { TIP_WORD.containsMatchIn(it.raw) }
@@ -246,17 +276,43 @@ object OfferParser {
             }.toList()
         }.filter { it in 1.0..600.0 }.distinct()
 
-        val twoLegOffer = pkg in setOf("com.uber.driver", "com.lyft.driver") &&
+        val isRideshare = pkg == "com.ubercab.driver" || pkg == "com.lyft.android.driver"
+
+        // Both supplied field layouts put each leg's minutes and miles in
+        // the same label: "10 min (6.3 mi)" or "7 min · 4.5 mi".
+        // Keep two paired legs even if their values happen to be identical;
+        // the generic .distinct() path would otherwise drop a leg.
+        val pairedLegs = texts.mapNotNull { label ->
+            val miles = MILES.findAll(label).toList()
+            val kms = KM.findAll(label).toList()
+            val minutes = MINUTES.findAll(label).toList()
+            if (minutes.size != 1 || miles.size + kms.size != 1) null
+            else {
+                val km = if (miles.isNotEmpty())
+                    miles.single().groupValues[1].toDoubleOrNull()?.times(1.609344)
+                    else kms.single().groupValues[1].toDoubleOrNull()
+                val min = minutes.single().groupValues[1].toDoubleOrNull()
+                if (km != null && min != null && km in 0.2..500.0 && min in 1.0..600.0)
+                    km to min
+                else null
+            }
+        }
+        val usePairedLegs = isRideshare && pairedLegs.size == 2
+        val twoLegOffer = isRideshare &&
             distanceSegments.size == 2 && durationSegments.size == 2
 
         val distanceKm = when {
+            usePairedLegs -> pairedLegs.sumOf { it.first }
             twoLegOffer -> distanceSegments.sum()
-            distanceSegments.size == 1 -> distanceSegments.single()
+            distanceSegments.size == 1 && !usePairedLegs ->
+                distanceSegments.single()
             else -> null
         }
         val durationMin = when {
+            usePairedLegs -> pairedLegs.sumOf { it.second }
             twoLegOffer -> durationSegments.sum()
-            durationSegments.size == 1 -> durationSegments.single()
+            durationSegments.size == 1 && !usePairedLegs ->
+                durationSegments.single()
             else -> null
         }
 

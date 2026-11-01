@@ -38,8 +38,8 @@ object ServiceHealth {
         if (now - lastEventWriteAt < EVENT_WRITE_INTERVAL_MS) return
         lastEventWriteAt = now
         val app = when (pkg) {
-            "com.uber.driver" -> "Uber"
-            "com.lyft.driver" -> "Lyft"
+            "com.ubercab.driver" -> "Uber"
+            "com.lyft.android.driver" -> "Lyft"
             else -> return
         }
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()

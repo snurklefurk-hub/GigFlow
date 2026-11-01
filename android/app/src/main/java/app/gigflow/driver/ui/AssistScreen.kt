@@ -571,8 +571,8 @@ class AssistScreen(
     }
 
     private val watchedApps = listOf(
-        "Uber Driver" to "com.uber.driver",
-        "Lyft Driver" to "com.lyft.driver",
+        "Uber Driver" to "com.ubercab.driver",
+        "Lyft Driver" to "com.lyft.android.driver",
     )
 
     /** Mystro-style per-service filters — one row per watched app. */

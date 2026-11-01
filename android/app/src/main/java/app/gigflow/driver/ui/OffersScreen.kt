@@ -84,8 +84,8 @@ class OffersScreen(ctx: Context, private val p: Palette, private val settings: a
             "GOOD" -> "Good offer"; "MEH" -> "Borderline"; else -> "Skipped"
         }
         val app = when (e.pkg) {
-            "com.uber.driver" -> "Uber"
-            "com.lyft.driver" -> "Lyft"
+            "com.ubercab.driver" -> "Uber"
+            "com.lyft.android.driver" -> "Lyft"
             else -> "Unknown"
         }
         val stats = buildString {
