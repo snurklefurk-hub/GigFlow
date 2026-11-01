@@ -190,7 +190,21 @@ object OfferParser {
         nodes: List<FlatNode>,
         extra: Regex? = null,
         extraSymbol: String = "$",
-    ): DetectedOffer? = parseTexts(pkg, nodes.map { it.text }, extra, extraSymbol)
+    ): DetectedOffer? {
+        val parsed = parseTexts(pkg, nodes.map { it.text }, extra, extraSymbol) ?: return null
+        fun findControl(pattern: Regex): NodeRef? {
+            val node = nodes.firstOrNull { it.clickable &&
+                pattern.containsMatchIn(it.text) && it.bounds.width() > 0 }
+                ?: nodes.firstOrNull { pattern.containsMatchIn(it.text) &&
+                    it.bounds.width() > 0 }
+            return node?.let { NodeRef(it.bounds, it.text) }
+        }
+        // Preserve control references for diagnostics; never click driver apps.
+        val accept = findControl(ACCEPT_WORDS)
+            ?: if (parsed.isReservation) findControl(RESERVE_ACCEPT) else null
+        val decline = findControl(DECLINE_WORDS)
+        return parsed.copy(acceptNode = accept, declineNode = decline)
+    }
 
     /** Pure text entrypoint for replaying real Uber and Lyft offer samples in tests. */
     fun parseTexts(
@@ -340,7 +354,7 @@ object OfferParser {
             rawTexts = texts,
             currencySymbol = currency,
             expiresInSec = expiresInSec,
-            isReservation = false,
+            isReservation = texts.any { RESERVATION.containsMatchIn(it) },
         )
     }
 }
